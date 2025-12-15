@@ -1,117 +1,132 @@
-// src/features/faculty/FacultyDashboard.jsx
-import React from 'react';
+import React from "react";
+import "./FacultyDashboard.css";
 
+/* ================== MAIN COMPONENT ================== */
 export default function FacultyDashboard() {
-  // Static mock data for now; replace with API calls later
-  const faculty = { name: 'Dr. Smith', department: 'Computer Science' };
-  const classes = [
-    { id: 'CSE-501', title: 'Distributed Systems', today: '10:00–11:30', room: 'A-204' },
-    { id: 'CSE-502', title: 'Data Mining', today: '13:00–14:30', room: 'B-105' },
-  ];
-  const sessions = [
-    { id: 'S-1001', course: 'CSE-501', startAt: '09:58', status: 'Active', attendees: 42 },
-    { id: 'S-1000', course: 'CSE-502', startAt: '11:00', status: 'Closed', attendees: 39 },
-  ];
-  const tasks = [
-    { id: 1, text: 'Grade Assignment 2 (CSE-501)', due: 'Today' },
-    { id: 2, text: 'Upload quiz keys (CSE-502)', due: 'Tomorrow' },
+  const kpis = [
+    { title: "Subjects Handling", value: 4 },
+    { title: "Total Students", value: 182 },
+    { title: "Average Attendance", value: "86%", status: "good" },
+    { title: "Pending Attendance", value: 3, status: "warn" },
+    { title: "Pending Evaluations", value: 2, status: "bad" },
   ];
 
-  const stats = [
-    { label: 'Classes Today', value: classes.length },
-    { label: 'Active Session', value: sessions.filter(s => s.status === 'Active').length },
-    { label: 'Pending Tasks', value: tasks.length },
+  const schedule = [
+    {
+      time: "09:00 – 10:00",
+      subject: "Operating Systems",
+      section: "CSE-A",
+      room: "B-204",
+    },
+    {
+      time: "11:00 – 12:00",
+      subject: "DBMS",
+      section: "CSE-B",
+      room: "A-102",
+    },
+    {
+      time: "02:00 – 04:00",
+      subject: "Computer Networks Lab",
+      section: "CSE-A",
+      room: "Lab-3",
+    },
   ];
 
   return (
-    <div className="container">
-      <header className="page-header">
-        <div className="toolbar">
-          <div>
-            <h1 style={{ marginBottom: 4 }}>Faculty Dashboard</h1>
-            <p className="card-subtitle">{faculty.name} · {faculty.department}</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn secondary" title="Create announcement">Announcements</button>
-            <button className="btn">Start QR Session</button>
-          </div>
-        </div>
+    <div className="faculty">
+
+      {/* HEADER */}
+      <header className="faculty-header">
+        <h1>Faculty Dashboard</h1>
+        <p>Academic overview & daily teaching operations</p>
       </header>
 
-      <div className="stats">
-        {stats.map((s, i) => (
-          <div key={i} className="stat">
-            <div className="label">{s.label}</div>
-            <div className="value">{s.value}</div>
-          </div>
+      {/* KPI */}
+      <section className="faculty-kpis">
+        {kpis.map((kpi, i) => (
+          <Kpi key={i} {...kpi} />
         ))}
-      </div>
+      </section>
 
-      <div className="grid">
-        <section className="card">
-          <div className="card-header">
-            <h2 style={{ margin: 0 }}>Today’s Classes</h2>
-            <button className="btn ghost" title="Refresh">Refresh</button>
-          </div>
+      {/* CONTENT GRID */}
+      <section className="faculty-grid">
+
+        {/* SCHEDULE */}
+        <Card title="Today’s Teaching Schedule" wide>
           <table className="table">
             <thead>
               <tr>
-                <th>Course</th>
-                <th>Title</th>
                 <th>Time</th>
+                <th>Subject</th>
+                <th>Section</th>
                 <th>Room</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {classes.map(c => (
-                <tr key={c.id}>
-                  <td>{c.id}</td>
-                  <td>{c.title}</td>
-                  <td>{c.today}</td>
-                  <td>{c.room}</td>
+              {schedule.map((row, i) => (
+                <tr key={i}>
+                  <td>{row.time}</td>
+                  <td>{row.subject}</td>
+                  <td>{row.section}</td>
+                  <td>{row.room}</td>
+                  <td>
+                    <button className="btn btn-outline">Attendance</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </section>
+        </Card>
 
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h2 style={{ margin: 0 }}>QR Attendance Sessions</h2>
-              <p className="card-subtitle">Rotate QR every 60s to prevent reuse</p>
-            </div>
-            <button className="btn">Start New Session</button>
+        {/* QUICK ACTIONS */}
+        <Card title="Quick Actions">
+          <div className="actions">
+            <button className="btn btn-primary">Mark Attendance</button>
+            <button className="btn btn-secondary">Enter Marks</button>
+            <button className="btn btn-ghost">Create Assignment</button>
           </div>
-          <ul className="list">
-            {sessions.map(s => (
-              <li key={s.id} className="list-item">
-                <span>{s.id} · {s.course}</span>
-                <span>Start {s.startAt}</span>
-                <span className={s.status === 'Active' ? 'badge success' : 'badge neutral'}>{s.status}</span>
-                <span>{s.attendees} attendees</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        </Card>
 
-        <section className="card">
-          <div className="card-header">
-            <h2 style={{ margin: 0 }}>To-Do</h2>
-            <button className="btn secondary">Add Task</button>
-          </div>
+        {/* TASKS */}
+        <Card title="Pending Tasks">
           <ul className="list">
-            {tasks.map(t => (
-              <li key={t.id} className="list-item">
-                <span>{t.text}</span>
-                <span></span>
-                <span className="badge warning">{t.due}</span>
-                <span></span>
-              </li>
-            ))}
+            <li>Mark DBMS attendance</li>
+            <li>Upload CIA-1 marks</li>
+            <li>Evaluate Assignment-2</li>
           </ul>
-        </section>
-      </div>
+        </Card>
+
+        {/* NOTICES */}
+        <Card title="Important Notices" wide>
+          <ul className="notice">
+            <li>Internal marks submission deadline – Friday</li>
+            <li>Department meeting today at 3:00 PM</li>
+            <li>Attendance audit next week</li>
+          </ul>
+        </Card>
+
+      </section>
+    </div>
+  );
+}
+
+/* ================== REUSABLE COMPONENTS ================== */
+
+function Card({ title, wide, children }) {
+  return (
+    <div className={`card ${wide ? "wide" : ""}`}>
+      <h2>{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function Kpi({ title, value, status }) {
+  return (
+    <div className={`kpi ${status || ""}`}>
+      <span>{title}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
