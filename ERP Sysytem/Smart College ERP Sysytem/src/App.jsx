@@ -5,7 +5,9 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import StudentLayout from "./features/student/StudentLayout";
 import StudentDashboard from "./features/student/StudentDashboard";
 import StudentProfile from "./features/student/StudentProfile";
+import StudentCourses from "./features/student/StudentCourses";
 
+import FacultyLayout from "./features/faculty/FacultyLayout";
 import FacultyDashboard from "./features/faculty/FacultyDashboard";
 import AdminDashboard from "./features/admin/AdminDashboard";
 
@@ -47,10 +49,14 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<StudentDashboard />} />
           <Route path="profile" element={<StudentProfile />} />
+          <Route path="/student/courses" element={<StudentCourses />} />
         </Route>
 
         {/* FACULTY */}
-        <Route path="/faculty/dashboard" element={<FacultyDashboard />} />
+        <Route path="/faculty" element={<FacultyLayout />}>
+  <Route path="dashboard" element={<FacultyDashboard />} />
+  {/* add more faculty pages here */}
+</Route>
 
         {/* ADMIN */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />

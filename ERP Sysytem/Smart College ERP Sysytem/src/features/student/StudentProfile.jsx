@@ -205,7 +205,12 @@ export default function StudentProfile() {
                 <Input label="Program" name="program" value={form.program} onChange={onChange} readOnly={!editMode.academic} />
                 <Input label="Department" name="department" value={form.department} onChange={onChange} readOnly={!editMode.academic} />
                 <Input label="Semester" name="semester" value={form.semester} onChange={onChange} readOnly={!editMode.academic} />
+                <Input label="Section" name="section" value={form.section} onChange={onChange} readOnly={!editMode.academic} />
                 <Input label="CGPA" name="cgpa" value={form.cgpa} onChange={onChange} readOnly={!editMode.academic} />
+                <Input label="AdmissionYear" name="admissionyear" value={form.admissionYear} onChange={onChange} readOnly={!editMode.academic} />
+                 <Input label="PassoutYear" name="passoutyear" value={form.passoutYear} onChange={onChange} readOnly={!editMode.academic} />
+                  
+
               </Grid>
             </Section>
           )}
