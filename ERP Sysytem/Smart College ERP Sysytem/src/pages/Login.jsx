@@ -1,8 +1,9 @@
-// src/pages/Login.jsx (only show key changes)
-import { api } from '../auth/api';
-import { setToken } from '../auth/storage';
+// src/pages/Login.jsx
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { api } from '../auth/api';
+import { setToken } from '../auth/storage';
+import { setUser } from '../auth/storage';
 import './login.css';
 
 export default function Login() {
@@ -16,24 +17,25 @@ export default function Login() {
   const from = location.state?.from?.pathname || '/';
 
   const onSubmit = async (e) => {
-  e.preventDefault();
-  setErr('');
-  if (!email || !password) {
-    setErr('Please enter email and password.');
-    return;
-  }
-  try {
-    setBusy(true);
-    const res = await api.login({ email, password });
-    if (res?.token) setToken(res.token);
-    const next = res?.redirectPath || '/';
-    navigate(next, { replace: true });
-  } catch (e) {
-    setErr(e.message || 'Invalid credentials. Please try again.');
-  } finally {
-    setBusy(false);
-  }
-};
+    e.preventDefault();
+    setErr('');
+    if (!email || !password) {
+      setErr('Please enter email and password.');
+      return;
+    }
+    try {
+      setBusy(true);
+      const res = await api.login({ email, password });
+      if (res?.token) setToken(res.token);
+      if (res?.user) setUser(res.user);
+      const next = res?.redirectPath || from || '/';
+      navigate(next, { replace: true });
+    } catch (e) {
+      setErr(e.message || 'Invalid credentials. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="auth-wrap">

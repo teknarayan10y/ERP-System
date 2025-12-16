@@ -1,7 +1,24 @@
 // src/features/student/StudentProfile.jsx
 import React, { useEffect, useState } from "react";
 import { api } from "../../auth/api";
+import { getUser, setUser } from "../../auth/storage";
 import "./StudentProfile.css";
+
+function splitName(name) {
+  const parts = (name || "").trim().split(/\s+/);
+  const firstName = parts[0] || "";
+  const lastName = parts.slice(1).join(" ");
+  return { firstName, lastName };
+}
+
+// Convert "/uploads/..." to absolute API URL in dev/prod
+function toAbsoluteUploadUrl(pathOrUrl) {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const base = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+  const rel = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+  return `${base}${rel}`;
+}
 
 export default function StudentProfile() {
   const [loading, setLoading] = useState(true);
@@ -10,7 +27,6 @@ export default function StudentProfile() {
   const [ok, setOk] = useState("");
   const [activeTab, setActiveTab] = useState("personal");
 
-  /* ---------- EDIT MODE ---------- */
   const [editMode, setEditMode] = useState({
     personal: false,
     contact: false,
@@ -19,9 +35,8 @@ export default function StudentProfile() {
     other: false,
   });
 
-  /* ---------- FORM DATA ---------- */
   const [form, setForm] = useState({
-    /* Personal */
+    // Personal
     firstName: "",
     lastName: "",
     gender: "",
@@ -29,7 +44,7 @@ export default function StudentProfile() {
     bloodGroup: "",
     nationality: "",
 
-    /* Contact */
+    // Contact
     email: "",
     phone: "",
     altPhone: "",
@@ -38,7 +53,7 @@ export default function StudentProfile() {
     state: "",
     pincode: "",
 
-    /* Academic */
+    // Academic
     registerNumber: "",
     rollNo: "",
     program: "",
@@ -49,9 +64,10 @@ export default function StudentProfile() {
     passoutYear: "",
     cgpa: "",
 
-    /* Professional */
-    profileImage: null,
-    profileImagePreview: "",
+    // Professional
+    profileImage: null,          // File object when chosen
+    profileImagePreview: "",     // local preview URL
+    profileImageUrl: "",         // persisted absolute URL
     github: "",
     linkedin: "",
     portfolio: "",
@@ -62,19 +78,55 @@ export default function StudentProfile() {
     kaggle: "",
     resumeLink: "",
 
-    /* Other */
+    // Other
     aadhaar: "",
     hobbies: "",
     achievements: "",
     remarks: "",
   });
 
-  /* ---------- LOAD PROFILE ---------- */
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.studentProfile();
-        setForm(f => ({ ...f, ...(res?.profile || {}) }));
+        // 1) Prefill from cached user
+        const cached = getUser();
+        if (cached) {
+          const { firstName, lastName } = splitName(cached.name);
+          setForm((f) => ({
+            ...f,
+            firstName,
+            lastName,
+            email: cached.email || f.email,
+          }));
+        }
+
+        // 2) Refresh from server (authoritative)
+        try {
+          const me = await api.me();
+          if (me?.user) {
+            const { firstName, lastName } = splitName(me.user.name);
+            setForm((f) => ({
+              ...f,
+              firstName,
+              lastName,
+              email: me.user.email || f.email,
+            }));
+            setUser(me.user);
+          }
+        } catch {}
+
+        // 3) Load persisted profile
+        try {
+          const res = await api.profileGet(); // { profile }
+          if (res?.profile) {
+            const p = res.profile;
+            setForm((f) => ({
+              ...f,
+              ...p,
+              profileImageUrl: toAbsoluteUploadUrl(p.profileImage || f.profileImageUrl),
+            }));
+          }
+        } catch {}
       } catch (e) {
         setErr(e.message || "Failed to load profile");
       } finally {
@@ -83,17 +135,31 @@ export default function StudentProfile() {
     })();
   }, []);
 
-  /* ---------- HANDLERS ---------- */
+  // ---------- HANDLERS ----------
   const onChange = (e) => {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+    let { name, value } = e.target;
+    if (name === "gender") value = value.toLowerCase();
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
+
+  const MAX_SIZE = 2 * 1024 * 1024;
+  const ALLOWED_TYPES = new Set(['image/jpeg','image/png','image/webp','image/gif']);
 
   const onImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setForm(prev => ({
+    if (!ALLOWED_TYPES.has(file.type)) {
+      setErr('Invalid image type. Please select JPG, PNG, WEBP, or GIF.');
+      return;
+    }
+    if (file.size > MAX_SIZE) {
+      setErr('Image is too large. Max size is 2 MB.');
+      return;
+    }
+
+    setErr('');
+    setForm((prev) => ({
       ...prev,
       profileImage: file,
       profileImagePreview: URL.createObjectURL(file),
@@ -101,20 +167,71 @@ export default function StudentProfile() {
   };
 
   const toggleEdit = (section) => {
-    setEditMode(prev => ({ ...prev, [section]: !prev[section] }));
+    setEditMode((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setErr(""); setOk("");
+    setErr("");
+    setOk("");
     try {
       setSaving(true);
 
-      // Backend ready (FormData)
-      const fd = new FormData();
-      Object.keys(form).forEach(key => fd.append(key, form[key]));
+      // If a new file selected, send multipart/form-data; otherwise JSON
+      if (form.profileImage instanceof File) {
+        const fd = new FormData();
+        fd.append("profileImage", form.profileImage);
+        const keys = [
+          "firstName","lastName","gender","dob","bloodGroup","nationality",
+          "email","phone","altPhone","address","city","state","pincode",
+          "registerNumber","rollNo","program","department","semester","section",
+          "admissionYear","passoutYear","cgpa",
+          "github","linkedin","portfolio","leetcode","hackerrank","codechef","codeforces","kaggle","resumeLink",
+          "aadhaar","hobbies","achievements","remarks",
+        ];
+        keys.forEach((k) => {
+          if (form[k] !== undefined && form[k] !== null) fd.append(k, String(form[k]));
+        });
 
-      await api.updateStudentProfile(fd);
+        const res = await api.profilePutForm(fd);
+        if (res?.profile) {
+          const raw = res.profile.profileImage || "";
+          const abs = toAbsoluteUploadUrl(raw);
+          const bust = abs ? `${abs}?t=${Date.now()}` : "";
+          setForm((f) => ({
+            ...f,
+            ...res.profile,
+            profileImage: null,
+            profileImagePreview: "",
+            profileImageUrl: bust || f.profileImageUrl,
+          }));
+          if (bust) {
+            localStorage.setItem("profile_photo_url", bust);
+            window.dispatchEvent(new Event("profile-photo-updated"));
+          }
+        }
+      } else {
+        const payload = { ...form };
+        delete payload.profileImagePreview;
+        delete payload.profileImage;
+        delete payload.profileImageUrl;
+
+        const res = await api.profilePut(payload);
+        if (res?.profile) {
+          const raw = res.profile.profileImage || "";
+          const abs = toAbsoluteUploadUrl(raw);
+          const bust = abs ? `${abs}?t=${Date.now()}` : "";
+          setForm((f) => ({
+            ...f,
+            ...res.profile,
+            profileImageUrl: bust || f.profileImageUrl,
+          }));
+          if (bust) {
+            localStorage.setItem("profile_photo_url", bust);
+            window.dispatchEvent(new Event("profile-photo-updated"));
+          }
+        }
+      }
 
       setOk("Profile updated successfully");
       setEditMode({
@@ -132,20 +249,26 @@ export default function StudentProfile() {
   };
 
   if (loading) {
-    return <div className="profile-wrap"><div className="profile-skeleton">Loading…</div></div>;
+    return (
+      <div className="profile-wrap">
+        <div className="profile-skeleton">Loading…</div>
+      </div>
+    );
   }
+
+  // Prefer preview > persisted url > initial
+  const avatarContent = form.profileImagePreview
+    ? <img src={form.profileImagePreview} alt="Profile" />
+    : form.profileImageUrl
+      ? <img src={form.profileImageUrl} alt="Profile" />
+      : (form.firstName || "S")[0];
 
   return (
     <div className="profile-wrap">
-
       {/* HEADER */}
       <div className="profile-header">
         <div className="avatar-xl">
-          {form.profileImagePreview ? (
-            <img src={form.profileImagePreview} alt="Profile" />
-          ) : (
-            (form.firstName || "S")[0]
-          )}
+          {avatarContent}
         </div>
         <div>
           <h1>My Profile</h1>
@@ -154,7 +277,6 @@ export default function StudentProfile() {
       </div>
 
       <div className="profile-layout">
-
         {/* LEFT MENU */}
         <aside className="profile-menu">
           <button className={activeTab === "personal" ? "active" : ""} onClick={() => setActiveTab("personal")}>👤 Personal</button>
@@ -166,14 +288,30 @@ export default function StudentProfile() {
 
         {/* RIGHT CONTENT */}
         <form className="profile-form" onSubmit={onSubmit}>
-
           {/* PERSONAL */}
           {activeTab === "personal" && (
             <Section title="Personal Details" editing={editMode.personal} onEdit={() => toggleEdit("personal")}>
               <Grid>
                 <Input label="First Name" name="firstName" value={form.firstName} onChange={onChange} readOnly={!editMode.personal} />
                 <Input label="Last Name" name="lastName" value={form.lastName} onChange={onChange} readOnly={!editMode.personal} />
-                <Input label="Gender" name="gender" value={form.gender} onChange={onChange} readOnly={!editMode.personal} />
+
+                {/* Gender dropdown */}
+                <label className="field">
+                  <span>Gender</span>
+                  <select
+                    className="input"
+                    name="gender"
+                    value={form.gender}
+                    onChange={onChange}
+                    disabled={!editMode.personal}
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+
                 <Input type="date" label="DOB" name="dob" value={form.dob} onChange={onChange} readOnly={!editMode.personal} />
                 <Input label="Blood Group" name="bloodGroup" value={form.bloodGroup} onChange={onChange} readOnly={!editMode.personal} />
                 <Input label="Nationality" name="nationality" value={form.nationality} onChange={onChange} readOnly={!editMode.personal} />
@@ -207,10 +345,8 @@ export default function StudentProfile() {
                 <Input label="Semester" name="semester" value={form.semester} onChange={onChange} readOnly={!editMode.academic} />
                 <Input label="Section" name="section" value={form.section} onChange={onChange} readOnly={!editMode.academic} />
                 <Input label="CGPA" name="cgpa" value={form.cgpa} onChange={onChange} readOnly={!editMode.academic} />
-                <Input label="AdmissionYear" name="admissionyear" value={form.admissionYear} onChange={onChange} readOnly={!editMode.academic} />
-                 <Input label="PassoutYear" name="passoutyear" value={form.passoutYear} onChange={onChange} readOnly={!editMode.academic} />
-                  
-
+                <Input label="AdmissionYear" name="admissionYear" value={form.admissionYear} onChange={onChange} readOnly={!editMode.academic} />
+                <Input label="PassoutYear" name="passoutYear" value={form.passoutYear} onChange={onChange} readOnly={!editMode.academic} />
               </Grid>
             </Section>
           )}
@@ -218,17 +354,16 @@ export default function StudentProfile() {
           {/* PROFESSIONAL */}
           {activeTab === "professional" && (
             <Section title="Professional Details" editing={editMode.professional} onEdit={() => toggleEdit("professional")}>
-              
               {/* PROFILE PHOTO */}
               <div className="profile-photo-box">
                 <div className="photo-preview">
-                  {form.profileImagePreview ? (
-                    <img src={form.profileImagePreview} alt="Profile" />
-                  ) : (
-                    <span>No Photo</span>
-                  )}
+                  {form.profileImagePreview
+                    ? <img src={form.profileImagePreview} alt="Profile" />
+                    : form.profileImageUrl
+                      ? <img src={form.profileImageUrl} alt="Profile" />
+                      : <span>No Photo</span>
+                  }
                 </div>
-
                 {editMode.professional && (
                   <label className="upload-btn">
                     Upload Photo
@@ -267,7 +402,6 @@ export default function StudentProfile() {
               {saving ? "Saving…" : "Save All Changes"}
             </button>
           </div>
-
         </form>
       </div>
     </div>
@@ -300,7 +434,7 @@ function Input({ label, name, value, onChange, type = "text", col, readOnly }) {
       <input
         type={type}
         name={name}
-        value={value}
+        value={value ?? ""}
         onChange={onChange}
         readOnly={readOnly}
         className={readOnly ? "readonly" : ""}

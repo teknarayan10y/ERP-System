@@ -1,7 +1,8 @@
 // src/features/student/StudentLayout.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { clearToken } from "../../auth/storage";
+import { clearToken, clearUser, getUser, setUser } from "../../auth/storage";
+import { api } from "../../auth/api";
 import "./StudentDashboard.css";
 
 /* ICONS */
@@ -19,39 +20,79 @@ import {
   FaSignOutAlt,
 } from "react-icons/fa";
 
+// Helper: absolute URL for /uploads/...
+function toAbsoluteUploadUrl(pathOrUrl) {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const base = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+  const rel = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+  return `${base}${rel}`;
+}
+
 export default function StudentLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [user, setUserState] = useState(null);        // { name, email, role }
+  const [photoUrl, setPhotoUrl] = useState(localStorage.getItem("profile_photo_url") || "");
+  const [notices] = useState([]);
   const navigate = useNavigate();
+
+  // Load cached user immediately, then refresh + fetch profile image
+  useEffect(() => {
+    const cached = getUser();
+    if (cached) setUserState(cached);
+
+    (async () => {
+      try {
+        // Refresh user from server
+        const me = await api.me();
+        if (me?.user) {
+          setUserState(me.user);
+          setUser(me.user); // keep storage in sync
+        }
+      } catch {
+        // ignore missing/expired token
+      }
+
+      // Fetch profile to get saved avatar
+      try {
+        const res = await api.profileGet(); // { profile }
+        if (res?.profile?.profileImage) {
+          const abs = toAbsoluteUploadUrl(res.profile.profileImage);
+          const bust = abs ? `${abs}?t=${Date.now()}` : "";
+          setPhotoUrl(bust);
+          localStorage.setItem("profile_photo_url", bust);
+        }
+      } catch {
+        // profile may not exist yet
+      }
+    })();
+  }, []);
+
+  // React to photo changes saved from the profile page
+  useEffect(() => {
+    const onChange = () => {
+      const v = localStorage.getItem("profile_photo_url") || "";
+      setPhotoUrl(v);
+    };
+    window.addEventListener("storage", onChange);
+    window.addEventListener("profile-photo-updated", onChange);
+    return () => {
+      window.removeEventListener("storage", onChange);
+      window.removeEventListener("profile-photo-updated", onChange);
+    };
+  }, []);
 
   const handleLogout = () => {
     clearToken();
+    clearUser();
     navigate("/login", { replace: true });
   };
 
-  /* Demo user data (replace with API/context later) */
-  const demo = useMemo(
-    () => ({
-      profile: {
-        name: "John Doe",
-        program: "B.Tech CSE",
-        semester: 5,
-        rollNo: "CSE2021-1234",
-        section: "A",
-      },
-      notices: [{ id: 1 }, { id: 2 }],
-    }),
-    []
-  );
-
-  const profile = demo.profile;
-  const notices = demo.notices;
+  const displayName = user?.name || "Student";
+  const initial = displayName.trim().charAt(0).toUpperCase() || "S";
 
   return (
-    <div
-      className={`student-layout ${
-        sidebarOpen ? "sidebar-open" : "sidebar-closed"
-      }`}
-    >
+    <div className={`student-layout ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}>
       {/* ========== SIDEBAR ========== */}
       <aside className="sidebar">
         <div className="sidebar-header">
@@ -62,9 +103,7 @@ export default function StudentLayout() {
         <nav className="sidebar-nav">
           <NavLink
             to="/student/dashboard"
-            className={({ isActive }) =>
-              isActive ? "nav-item active" : "nav-item"
-            }
+            className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
           >
             <FaHome className="nav-icon" />
             <span>Dashboard</span>
@@ -72,9 +111,7 @@ export default function StudentLayout() {
 
           <NavLink
             to="/student/profile"
-            className={({ isActive }) =>
-              isActive ? "nav-item active" : "nav-item"
-            }
+            className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
           >
             <FaUser className="nav-icon" />
             <span>Complete Profile</span>
@@ -140,30 +177,26 @@ export default function StudentLayout() {
             </button>
             <div>
               <h1>Student Portal</h1>
-              <p>
-                {profile.rollNo} · Section {profile.section}
-              </p>
+              <p>{user?.email || ""}</p>
             </div>
           </div>
 
           <div className="header-right">
             <div className="notification">
               🔔
-              {notices.length > 0 && (
-                <span className="badge">{notices.length}</span>
-              )}
+              {notices.length > 0 && <span className="badge">{notices.length}</span>}
             </div>
 
             <div
               className="header-profile clickable"
               onClick={() => navigate("/student/profile")}
             >
-              <div className="avatar small">{profile.name[0]}</div>
+              <div className="avatar small">
+                {photoUrl ? <img src={photoUrl} alt="avatar" /> : initial}
+              </div>
               <div className="header-profile-info">
-                <strong>{profile.name}</strong>
-                <span>
-                  {profile.program} · Sem {profile.semester}
-                </span>
+                <strong>{displayName}</strong>
+                <span>{user?.role ? user.role[0].toUpperCase() + user.role.slice(1) : "Student"}</span>
               </div>
             </div>
 

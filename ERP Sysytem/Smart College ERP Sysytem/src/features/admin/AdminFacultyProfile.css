@@ -1,0 +1,85 @@
+/* ===============================
+   ADMIN FACULTY PROFILE (DARK)
+================================ */
+
+.admin-faculty-profile {
+  background: #0b1220;
+  padding: 24px;
+  min-height: 100vh;
+  color: #e5e7eb;
+}
+
+.admin-faculty-profile h1 {
+  font-size: 26px;
+  margin-bottom: 6px;
+  color: #f8fafc;
+}
+
+.admin-faculty-profile p {
+  color: #94a3b8;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* PROFILE CARD */
+.faculty-profile-card {
+  background: #111827;
+  padding: 22px;
+  border-radius: 16px;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.faculty-profile-card div {
+  font-size: 14px;
+  color: #e5e7eb;
+}
+
+.faculty-profile-card strong {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+/* SUBJECT LIST */
+.subject-list {
+  margin-top: 18px;
+  background: #1f2937;
+  padding: 14px;
+  border-radius: 12px;
+}
+
+.subject-list h3 {
+  margin-bottom: 10px;
+  font-size: 15px;
+  color: #f1f5f9;
+}
+
+.subject-chip {
+  display: inline-block;
+  padding: 6px 12px;
+  margin: 6px 6px 0 0;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 12px;
+  border-radius: 20px;
+}
+
+/* ACTIONS */
+.admin-actions {
+  margin-top: 24px;
+  display: flex;
+  gap: 14px;
+}
+
+/* BUTTONS */
+.btn.primary {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.btn.secondary {
+  background: #dc2626;
+  color: #ffffff;
+}

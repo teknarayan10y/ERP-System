@@ -145,7 +145,7 @@ body {
   border: 1px solid var(--border);
   font-size: 14px;
   outline: none;
-  background: #f9fafb;
+  background: #012950;
   transition: all 0.25s ease;
 }
 
@@ -154,6 +154,16 @@ body {
 }
 
 .field input:focus {
+  background: #5a5555;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+/* Scoped to the student profile page only */
+.profile-wrap .field input {
+  background: #f9fafb;
+}
+.profile-wrap .field input:focus {
   background: #ffffff;
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
@@ -338,4 +348,93 @@ body {
 
 .upload-btn:hover {
   background: #1e40af;
+}
+/* Remove or comment the global versions */
+ /* .field input { background: #012950; } */
+ /* .field input:focus { background: #5a5555; ... } */
+
+/* Keep inputs light and scoped to the page */
+.profile-wrap .field input {
+  background: #f9fafb;
+  color: #1f2937;         /* dark text fits light bg */
+  caret-color: #1f2937;
+}
+.profile-wrap .field input::placeholder {
+  color: #9ca3af;
+}
+.profile-wrap .field input:focus {
+  background: #ffffff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+.profile-section { font-size: 15.5px; }
+
+/* Remove or comment the global versions */
+ /* .field input { background: #012950; } */
+ /* .field input:focus { background: #5a5555; ... } */
+
+/* Scoped dark style */
+.profile-wrap .field input {
+  background: #0e152b;         /* dark */
+  color: #e5e7eb;              /* light text */
+  caret-color: #e5e7eb;
+  border: 1px solid #2a3558;
+}
+.profile-wrap .field input::placeholder {
+  color: #9aa5c3;
+}
+.profile-wrap .field input:focus {
+  background: #152042;
+  border-color: #5b8cff;
+  box-shadow: 0 0 0 3px rgba(91,140,255,0.25);
+}
+
+.profile-wrap .field span {
+  color: #ffffff;          /* very dark */
+  font-weight: 700;        /* bold label */
+  letter-spacing: .1px;
+}
+
+/* Ensure avatar image stays inside the circle */
+.avatar-xl {
+  width: 78px;        /* you already have this */
+  height: 78px;       /* you already have this */
+  border-radius: 50%; /* you already have this */
+  overflow: hidden;   /* IMPORTANT: clip overflowing image */
+  display: flex;      /* keep existing center styles if any */
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-xl img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;  /* fill the circle without distortion */
+  border-radius: 50%;
+  display: block;
+}
+
+/* Small header avatar circle */
+.avatar.small {
+  width: 36px;        /* or your current size */
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;   /* clip the image */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar.small img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.avatar-xl img,
+.avatar.small img {
+  max-width: none; /* ensure our width/height control applies */
 }

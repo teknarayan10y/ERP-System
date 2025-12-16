@@ -1,6 +1,5 @@
 // src/auth/api.js
 import { getToken } from './storage';
-
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 async function request(path, options = {}) {
@@ -8,7 +7,6 @@ async function request(path, options = {}) {
   headers.set('Content-Type', 'application/json');
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -19,9 +17,28 @@ async function request(path, options = {}) {
   return data;
 }
 
+// New: for multipart/form-data (do not set Content-Type yourself)
+async function requestForm(path, formData, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const res = await fetch(`${BASE}${path}`, { method: 'PUT', headers, body: formData });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data?.message || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
 export const api = {
-  signup: (body) => request('/auth/signup', { method: 'POST', body: JSON.stringify(body) }),
-  login: (body) => request('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
-  studentData: () => request('/dashboard/student-data'),
-  facultyData: () => request('/dashboard/faculty-data'),
+  signup:     (body) => request('/auth/signup', { method: 'POST', body: JSON.stringify(body) }),
+  login:      (body) => request('/auth/login',  { method: 'POST', body: JSON.stringify(body) }),
+  me:         ()    => request('/auth/refresh', { method: 'POST' }),
+  studentData:()    => request('/dashboard/student-data'),
+  facultyData: ()   => request('/dashboard/faculty-data'),
+  profileGet:  ()   => request('/profile', { method: 'GET' }),
+  profilePut:  (b)  => request('/profile', { method: 'PUT', body: JSON.stringify(b) }),
+  profilePutForm: (fd) => requestForm('/profile', fd),
 };

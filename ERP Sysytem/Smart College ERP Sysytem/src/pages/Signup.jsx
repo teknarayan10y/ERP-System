@@ -1,13 +1,13 @@
 // src/pages/Signup.jsx
-import { api } from '../auth/api';
-import { setToken } from '../auth/storage';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { api } from '../auth/api';
+import { setToken, setUser } from '../auth/storage';
 import './signup.css';
 
 export default function Signup() {
   const [name, setName] = useState('');
-   const [role, setRole] = useState('student');
+  const [role, setRole] = useState('student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -15,32 +15,32 @@ export default function Signup() {
   const [ok, setOk] = useState('');
   const navigate = useNavigate();
 
- 
-
   const onSubmit = async (e) => {
-  e.preventDefault();
-  setErr(''); setOk('');
-  if (!name || !email || !password) {
-    setErr('Please fill all required fields.');
-    return;
-  }
-  try {
-    setBusy(true);
-    const normalizedRole = (role || '').toLowerCase(); // "student" | "faculty" | "admin?"
-    const res = await api.signup({ name, email, password, role: normalizedRole });
-    if (res?.token) setToken(res.token);
-    const next = res?.redirectPath
-      || (normalizedRole === 'student' ? '/student/dashboard'
-      : normalizedRole === 'faculty' ? '/faculty/dashboard'
-      : '/admin/dashboard');
-    setOk('Account created successfully.');
-    setTimeout(() => navigate(next, { replace: true }), 400);
-  } catch (e) {
-    setErr(e.message || 'Signup failed. Please try again.');
-  } finally {
-    setBusy(false);
-  }
-};
+    e.preventDefault();
+    setErr(''); setOk('');
+    if (!name || !email || !password) {
+      setErr('Please fill all required fields.');
+      return;
+    }
+    try {
+      setBusy(true);
+      const normalizedRole = (role || '').toLowerCase();
+      const res = await api.signup({ name, email, password, role: normalizedRole });
+      if (res?.token) setToken(res.token);
+      if (res?.user) setUser(res.user);
+      const next = res?.redirectPath
+        || (normalizedRole === 'student' ? '/student/dashboard'
+        : normalizedRole === 'faculty' ? '/faculty/dashboard'
+        : '/admin/dashboard');
+      setOk('Account created successfully.');
+      setTimeout(() => navigate(next, { replace: true }), 400);
+    } catch (e) {
+      setErr(e.message || 'Signup failed. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="auth-wrap">
       <div className="auth-card">
@@ -65,9 +65,9 @@ export default function Signup() {
           <label className="field">
             <span>Role</span>
             <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
-  <option value="student">Student</option>
-  <option value="faculty">Faculty</option>
-</select>
+              <option value="student">Student</option>
+              <option value="faculty">Faculty</option>
+            </select>
           </label>
 
           <label className="field">

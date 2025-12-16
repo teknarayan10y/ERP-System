@@ -1,21 +1,32 @@
-// src/App.jsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 
+/* -------- STUDENT -------- */
 import StudentLayout from "./features/student/StudentLayout";
 import StudentDashboard from "./features/student/StudentDashboard";
 import StudentProfile from "./features/student/StudentProfile";
 import StudentCourses from "./features/student/StudentCourses";
 
+/* -------- FACULTY -------- */
 import FacultyLayout from "./features/faculty/FacultyLayout";
 import FacultyDashboard from "./features/faculty/FacultyDashboard";
-import AdminDashboard from "./features/admin/AdminDashboard";
 
+/* -------- ADMIN -------- */
+import AdminLayout from "./features/admin/AdminLayout";
+import AdminDashboard from "./features/admin/AdminDashboard";
+import CreateFaculty from "./features/admin/CreateFaculty";
+import AdminFaculty from "./features/admin/AdminFaculty";
+import AdminFacultyProfile from "./features/admin/AdminFacultyProfile";
+import AdminStudents from "./features/admin/AdminStudents";
+import AdminStudentProfile from "./features/admin/AdminStudentProfile";
+
+/* -------- AUTH -------- */
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+
 import "./App.css";
 
-/* ---------------- HOME PAGE ---------------- */
+/* ---------------- HOME ---------------- */
 function Home() {
   return (
     <div className="container">
@@ -25,9 +36,9 @@ function Home() {
       </header>
 
       <nav className="nav">
-        <Link to="/student/dashboard" className="btn">Student Dashboard</Link>
-        <Link to="/faculty/dashboard" className="btn">Faculty Dashboard</Link>
-        <Link to="/admin/dashboard" className="btn">Admin Dashboard</Link>
+        <Link to="/student" className="btn">Student Dashboard</Link>
+        <Link to="/faculty" className="btn">Faculty Dashboard</Link>
+        <Link to="/admin" className="btn">Admin Dashboard</Link>
         <Link to="/login" className="btn secondary">Login</Link>
         <Link to="/signup" className="btn ghost">Signup</Link>
       </nav>
@@ -44,24 +55,35 @@ export default function App() {
         {/* HOME */}
         <Route path="/" element={<Home />} />
 
-        {/* STUDENT (SHARED LAYOUT) */}
+        {/* ================= STUDENT ================= */}
         <Route path="/student" element={<StudentLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<StudentDashboard />} />
           <Route path="profile" element={<StudentProfile />} />
-          <Route path="/student/courses" element={<StudentCourses />} />
+          <Route path="courses" element={<StudentCourses />} />
         </Route>
 
-        {/* FACULTY */}
+        {/* ================= FACULTY ================= */}
         <Route path="/faculty" element={<FacultyLayout />}>
-  <Route path="dashboard" element={<FacultyDashboard />} />
-  {/* add more faculty pages here */}
-</Route>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<FacultyDashboard />} />
+          {/* add more faculty pages later */}
+        </Route>
 
-        {/* ADMIN */}
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        {/* ================= ADMIN ================= */}
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
+           <Route path="create-faculty" element={<CreateFaculty />} />
+           <Route path="faculty" element={<AdminFaculty />} />
+  <Route path="faculty/:facultyId" element={<AdminFacultyProfile />} />
+            <Route path="students" element={<AdminStudents />} />
+  <Route path="students/:studentId" element={<AdminStudentProfile />} />
 
-        {/* AUTH */}
+          {/* add admin pages later */}
+        </Route>
+
+        {/* ================= AUTH ================= */}
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
 
