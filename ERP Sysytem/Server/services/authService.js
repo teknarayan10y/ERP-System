@@ -16,7 +16,7 @@ async function registerUser({ name, email, password, role }) {
     name,
     email,
     passwordHash,
-    role: role || 'staff'
+   role: role || 'student'
   });
 
   return user;

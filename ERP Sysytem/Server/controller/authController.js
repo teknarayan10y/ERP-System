@@ -1,6 +1,7 @@
 // controller/authController.js
 const jwt = require('jsonwebtoken');
 const { registerUser, loginUser } = require('../services/authService');
+const User = require('../models/User');
 
 function signToken(user) {
   const payload = { sub: user._id.toString(), email: user.email, role: user.role };
@@ -52,5 +53,12 @@ async function login(req, res) {
     return res.status(status).json({ message });
   }
 }
+async function refresh(req, res) {
+  const user = await User.findById(req.user.sub);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  const token = signToken(user);
+  const redirectPath = getRedirectPath(user.role);
+  return res.json({ user: user.toJSON(), token, redirectPath });
+}
 
-module.exports = { signup, login };
+module.exports = { signup, login, refresh };
