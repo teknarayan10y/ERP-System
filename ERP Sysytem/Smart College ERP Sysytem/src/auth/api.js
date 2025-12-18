@@ -41,4 +41,18 @@ export const api = {
   profileGet:  ()   => request('/profile', { method: 'GET' }),
   profilePut:  (b)  => request('/profile', { method: 'PUT', body: JSON.stringify(b) }),
   profilePutForm: (fd) => requestForm('/profile', fd),
+  adminStudents: () => request('/admin/students', { method: 'GET' }),
+adminStudentProfile: (userId) => request(`/admin/students/${userId}/profile`, { method: 'GET' }), 
+adminUpdateStudentProfile: (userId, body) => request(`/admin/students/${userId}/profile`, { method: 'PATCH', body: JSON.stringify(body) }),
+adminUpdateUserStatus: (userId, isActive) => request(`/admin/students/${userId}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+facultyProfileGet: () => request('/faculty-profile', { method: 'GET' }),
+facultyProfilePut: (b) => request('/faculty-profile', { method: 'PUT', body: JSON.stringify(b) }),
+facultyProfilePutForm: (fd) => requestForm('/faculty-profile', fd),
+adminCreateFaculty: (body) => request('/admin/faculty', { method: 'POST', body: JSON.stringify(body) }),
+  adminFaculty: () => request('/admin/faculty', { method: 'GET' }),
+  adminFacultyProfile: (userId) => request(`/admin/faculty/${userId}/profile`, { method: 'GET' }),
+  adminUpdateFacultyProfile: (userId, body) =>
+    request(`/admin/faculty/${userId}/profile`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminUpdateFacultyStatus: (userId, isActive) =>
+    request(`/admin/faculty/${userId}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
 };

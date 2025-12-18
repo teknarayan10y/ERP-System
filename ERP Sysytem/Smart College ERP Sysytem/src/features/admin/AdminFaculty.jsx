@@ -1,87 +1,74 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../../auth/api";
 import "./AdminFaculty.css";
+
+function toAbsoluteUploadUrl(pathOrUrl) {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+  const filesBase = apiBase.replace(/\/api$/i, "");
+  const rel = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+  return `${filesBase}${rel}`;
+}
 
 export default function AdminFaculty() {
   const navigate = useNavigate();
+  const [rows, setRows] = useState([]);
+  const [err, setErr] = useState("");
 
-  // Demo data (later backend)
-  const facultyList = [
-    {
-      id: "FAC001",
-      name: "Dr. R. Kumar",
-      department: "Computer Science",
-      designation: "Professor",
-      status: "Active",
-    },
-    {
-      id: "FAC002",
-      name: "Ms. Anita Sharma",
-      department: "Electronics",
-      designation: "Assistant Professor",
-      status: "Active",
-    },
-    {
-      id: "FAC003",
-      name: "Mr. Rahul Verma",
-      department: "Mechanical",
-      designation: "Associate Professor",
-      status: "Inactive",
-    },
-  ];
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.adminFaculty();
+        setRows(res.faculty || []);
+      } catch (e) {
+        setErr(e.message || "Failed to load faculty");
+      }
+    })();
+  }, []);
 
   return (
     <div className="admin-faculty">
       <h1>Faculty</h1>
-      <p>Click on a faculty member to view profile</p>
-
-      <table className="faculty-table">
+      {err && <div className="form-error">{err}</div>}
+      <table className="admin-table">
         <thead>
           <tr>
-            <th>Employee ID</th>
+            <th>Photo</th>
+            <th>Faculty ID</th>
             <th>Name</th>
             <th>Department</th>
             <th>Designation</th>
+            <th>Email</th>
             <th>Status</th>
             <th>Action</th>
           </tr>
         </thead>
-
         <tbody>
-          {facultyList.map((f) => (
-            <tr key={f.id}>
-              <td>{f.id}</td>
-
-              <td
-                className="clickable"
-                onClick={() => navigate(`/admin/faculty/${f.id}`)}
-              >
-                {f.name}
-              </td>
-
-              <td>{f.department}</td>
-              <td>{f.designation}</td>
-
-              <td>
-                <span
-                  className={`faculty-status ${
-                    f.status === "Active" ? "active" : "inactive"
-                  }`}
-                >
-                  {f.status}
-                </span>
-              </td>
-
-              <td>
-                <button
-                  className="btn ghost"
-                  onClick={() => navigate(`/admin/faculty/${f.id}`)}
-                >
-                  View Profile
-                </button>
-              </td>
-            </tr>
-          ))}
+          {rows.map(f => {
+            const photo = toAbsoluteUploadUrl(f.profileImage);
+            return (
+              <tr key={f.userId}>
+                <td>{photo ? <img src={photo} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} /> : "-"}</td>
+                <td>{f.facultyId || "-"}</td>
+                <td className="clickable" onClick={() => navigate(`/admin/faculty/${f.userId}`)}>{f.name}</td>
+                <td>{f.department || "-"}</td>
+                <td>{f.designation || "-"}</td>
+                <td>{f.email}</td>
+                <td>
+                  <span className={`status ${f.isActive ? "active" : "inactive"}`}>
+                    {f.isActive ? "Active" : "Inactive"}
+                  </span>
+                </td>
+                <td>
+                  <button className="btn ghost" onClick={() => navigate(`/admin/faculty/${f.userId}`)}>
+                    View Profile
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

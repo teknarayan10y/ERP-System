@@ -6,6 +6,9 @@ const authRoutes = require('./routes/authRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes = require('./routes/userRoutes');
 const profileRoutes = require('./routes/profileRoutes')
+const adminStudentRoutes = require('./routes/adminStudentRoutes') 
+const facultyProfileRoutes = require('./routes/facultyProfileRoutes');
+const adminFacultyRoutes = require('./routes/adminFacultyRoutes');
 dotenv.config();
 
 const app = express();
@@ -28,6 +31,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/admin/students', adminStudentRoutes);
+app.use('/api/faculty-profile', facultyProfileRoutes);
+app.use('/api/admin/faculty', adminFacultyRoutes); 
 
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

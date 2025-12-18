@@ -21,12 +21,16 @@ import {
 } from "react-icons/fa";
 
 // Helper: absolute URL for /uploads/...
+// replace existing toAbsoluteUploadUrl in both files
 function toAbsoluteUploadUrl(pathOrUrl) {
   if (!pathOrUrl) return "";
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-  const base = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+  // Drop trailing /api if present to point to the server origin for static files
+  const filesBase = apiBase.replace(/\/api$/i, "");
   const rel = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
-  return `${base}${rel}`;
+  return `${filesBase}${rel}`;
 }
 
 export default function StudentLayout() {
