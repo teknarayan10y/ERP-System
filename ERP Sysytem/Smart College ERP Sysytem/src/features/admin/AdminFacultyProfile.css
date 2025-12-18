@@ -1,85 +1,175 @@
-/* ===============================
-   ADMIN FACULTY PROFILE (DARK)
-================================ */
-
+/* src/features/admin/AdminFacultyProfile.css */
 .admin-faculty-profile {
-  background: #0b1220;
-  padding: 24px;
-  min-height: 100vh;
-  color: #e5e7eb;
+  padding: 16px;
 }
 
-.admin-faculty-profile h1 {
-  font-size: 26px;
+.profile-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.profile-photo {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #e5e7eb;
+}
+
+.name-line {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.email-line {
+  color: #6b7280;
+  font-size: 14px;
   margin-bottom: 6px;
-  color: #f8fafc;
 }
 
-.admin-faculty-profile p {
-  color: #94a3b8;
-  font-size: 14px;
-  margin-bottom: 20px;
-}
-
-/* PROFILE CARD */
-.faculty-profile-card {
-  background: #111827;
-  padding: 22px;
-  border-radius: 16px;
-  box-shadow: 0 12px 36px rgba(0,0,0,0.55);
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.faculty-profile-card div {
-  font-size: 14px;
-  color: #e5e7eb;
-}
-
-.faculty-profile-card strong {
-  color: #9ca3af;
-  font-weight: 500;
-}
-
-/* SUBJECT LIST */
-.subject-list {
-  margin-top: 18px;
-  background: #1f2937;
-  padding: 14px;
-  border-radius: 12px;
-}
-
-.subject-list h3 {
-  margin-bottom: 10px;
-  font-size: 15px;
-  color: #f1f5f9;
-}
-
-.subject-chip {
+.status-badge {
   display: inline-block;
-  padding: 6px 12px;
-  margin: 6px 6px 0 0;
-  background: #2563eb;
-  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 9999px;
   font-size: 12px;
-  border-radius: 20px;
+  font-weight: 600;
+}
+.status-badge.active {
+  background: #e8fff1;
+  color: #0d8a4a;
+  border: 1px solid #a7f3d0;
+}
+.status-badge.inactive {
+  background: #fff5f5;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
 }
 
-/* ACTIONS */
-.admin-actions {
-  margin-top: 24px;
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.field {
   display: flex;
-  gap: 14px;
+  flex-direction: column;
+  gap: 6px;
+}
+.field span {
+  font-size: 12px;
+  color: #6b7280;
+}
+.field input,
+.field select {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
 }
 
-/* BUTTONS */
+.col-span-2 {
+  grid-column: span 2;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+}
 .btn.primary {
-  background: #2563eb;
-  color: #ffffff;
+  background: #111827;
+  color: white;
+}
+.btn.primary[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn.secondary {
+  background: white;
+  color: #111827;
+  border-color: #e5e7eb;
 }
 
-.btn.secondary {
-  background: #dc2626;
-  color: #ffffff;
+.form-error {
+  color: #b91c1c;
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.form-ok {
+  color: #065f46;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+/* Image modal */
+.image-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.image-modal {
+  position: relative;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  max-width: 90vw;
+  max-height: 90vh;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.image-large {
+  max-width: 80vw;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.modal-close {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 9999px;
+  background: #111827;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

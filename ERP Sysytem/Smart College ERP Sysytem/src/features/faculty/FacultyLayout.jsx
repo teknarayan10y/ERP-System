@@ -1,34 +1,77 @@
-import React, { useMemo, useState } from "react";
+// src/features/faculty/FacultyLayout.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearToken } from "../../auth/storage";
-import "../student/StudentDashboard.css"; // ✅ reuse same CSS
+import { api } from "../../auth/api";
+import "../student/StudentDashboard.css";
+
+function toAbsoluteUploadUrl(pathOrUrl) {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+  const filesBase = apiBase.replace(/\/api$/i, "");
+  const rel = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+  return `${filesBase}${rel}`;
+}
 
 export default function FacultyLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [photoUrl, setPhotoUrl] = useState(localStorage.getItem("faculty_photo_url") || "");
+  const [user, setUserState] = useState(null);
   const navigate = useNavigate();
+
+  const demo = useMemo(
+    () => ({
+      profile: { name: "Faculty", department: "", designation: "", facultyId: "" },
+      notices: [],
+    }),
+    []
+  );
+  const { profile, notices } = demo;
+
+  // Fetch auth user for name/email
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await api.me();
+        if (me?.user) setUserState(me.user);
+      } catch {}
+    })();
+  }, []);
+
+  // Load avatar and cache-bust
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.facultyProfileGet();
+        if (res?.profile?.profileImage) {
+          const abs = toAbsoluteUploadUrl(res.profile.profileImage);
+          const bust = abs ? `${abs}?t=${Date.now()}` : "";
+          setPhotoUrl(bust);
+          localStorage.setItem("faculty_photo_url", bust);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // React to photo changes from profile page
+  useEffect(() => {
+    const onChange = () => setPhotoUrl(localStorage.getItem("faculty_photo_url") || "");
+    window.addEventListener("storage", onChange);
+    window.addEventListener("faculty-photo-updated", onChange);
+    return () => {
+      window.removeEventListener("storage", onChange);
+      window.removeEventListener("faculty-photo-updated", onChange);
+    };
+  }, []);
 
   const handleLogout = () => {
     clearToken();
     navigate("/login", { replace: true });
   };
 
-  /* Demo faculty data (replace with API/context later) */
-  const demo = useMemo(() => ({
-    profile: {
-      name: "Dr. Rajesh Sharma",
-      department: "Computer Science",
-      designation: "Associate Professor",
-      facultyId: "FAC-CSE-102",
-    },
-    notices: [{ id: 1 }, { id: 2 }, { id: 3 }],
-  }), []);
-
-  const { profile, notices } = demo;
-
   return (
     <div className={`student-layout ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}>
-
-      {/* ================= SIDEBAR ================= */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <h2>Smart ERP</h2>
@@ -40,37 +83,30 @@ export default function FacultyLayout() {
             <span className="nav-icon">🏠</span>
             <span>Dashboard</span>
           </NavLink>
-
           <NavLink to="/faculty/profile" className="nav-item">
             <span className="nav-icon">👤</span>
             <span>My Profile</span>
           </NavLink>
-
           <NavLink to="/faculty/courses" className="nav-item">
             <span className="nav-icon">📚</span>
             <span>My Subjects</span>
           </NavLink>
-
           <NavLink to="/faculty/students" className="nav-item">
             <span className="nav-icon">👨‍🎓</span>
             <span>My Students</span>
           </NavLink>
-
           <NavLink to="/faculty/attendance" className="nav-item">
             <span className="nav-icon">📝</span>
             <span>Attendance</span>
           </NavLink>
-
           <NavLink to="/faculty/marks" className="nav-item">
             <span className="nav-icon">📊</span>
             <span>Marks</span>
           </NavLink>
-
           <NavLink to="/faculty/assignments" className="nav-item">
             <span className="nav-icon">📂</span>
             <span>Assignments</span>
           </NavLink>
-
           <NavLink to="/faculty/settings" className="nav-item">
             <span className="nav-icon">⚙️</span>
             <span>Settings</span>
@@ -82,45 +118,35 @@ export default function FacultyLayout() {
         </button>
       </aside>
 
-      {/* ================= MAIN ================= */}
       <main className="main">
-
-        {/* ================= HEADER ================= */}
         <header className="page-header">
           <div className="header-left">
-            <button
-              className="menu-btn"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-            >
+            <button className="menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
               ☰
             </button>
-
             <div>
               <h1>Faculty Portal</h1>
-              <p>{profile.facultyId} · {profile.department}</p>
+              {/* <p>{user?.email || ""}</p> */}
             </div>
           </div>
 
           <div className="header-right">
-            {/* Notifications */}
             <div className="notification">
               🔔
-              {notices.length > 0 && (
-                <span className="badge">{notices.length}</span>
-              )}
+              {notices.length > 0 && <span className="badge">{notices.length}</span>}
             </div>
 
-            {/* Profile */}
             <div
               className="header-profile clickable"
               onClick={() => navigate("/faculty/profile")}
+              title="Open profile"
             >
               <div className="avatar small">
-                {profile.name.charAt(0)}
+                {photoUrl ? <img src={photoUrl} alt="avatar" /> : (user?.name?.charAt(0).toUpperCase() || "F")}
               </div>
               <div className="header-profile-info">
-                <strong>{profile.name}</strong>
-                <span>{profile.designation}</span>
+                <strong>{user?.name || "Faculty"}</strong>
+                <span>{user?.email || ""}</span>
               </div>
             </div>
 
@@ -130,11 +156,9 @@ export default function FacultyLayout() {
           </div>
         </header>
 
-        {/* ================= PAGE CONTENT ================= */}
         <div className="container">
           <Outlet />
         </div>
-
       </main>
     </div>
   );

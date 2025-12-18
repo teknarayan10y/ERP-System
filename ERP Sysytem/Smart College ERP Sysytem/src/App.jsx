@@ -10,6 +10,7 @@ import StudentCourses from "./features/student/StudentCourses";
 /* -------- FACULTY -------- */
 import FacultyLayout from "./features/faculty/FacultyLayout";
 import FacultyDashboard from "./features/faculty/FacultyDashboard";
+import FacultyProfile from "./features/faculty/FacultyProfile";
 
 /* -------- ADMIN -------- */
 import AdminLayout from "./features/admin/AdminLayout";
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/faculty" element={<FacultyLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<FacultyDashboard />} />
+           <Route path="profile" element={<FacultyProfile />} /> {/* NEW */}
           {/* add more faculty pages later */}
         </Route>
 
