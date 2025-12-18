@@ -14,6 +14,7 @@ import FacultyProfile from "./features/faculty/FacultyProfile";
 
 /* -------- ADMIN -------- */
 import AdminLayout from "./features/admin/AdminLayout";
+import AdminProfile from "./features/admin/AdminProfile";
 import AdminDashboard from "./features/admin/AdminDashboard";
 import CreateFaculty from "./features/admin/CreateFaculty";
 import AdminFaculty from "./features/admin/AdminFaculty";
@@ -74,6 +75,7 @@ export default function App() {
 
         {/* ================= ADMIN ================= */}
         <Route path="/admin" element={<AdminLayout />}>
+        <Route path="profile" element={<AdminProfile />} /> 
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<AdminDashboard />} />
            <Route path="create-faculty" element={<CreateFaculty />} />
