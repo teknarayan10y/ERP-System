@@ -44,7 +44,11 @@ export const api = {
   adminStudents: () => request('/admin/students', { method: 'GET' }),
 adminStudentProfile: (userId) => request(`/admin/students/${userId}/profile`, { method: 'GET' }), 
 adminUpdateStudentProfile: (userId, body) => request(`/admin/students/${userId}/profile`, { method: 'PATCH', body: JSON.stringify(body) }),
-adminUpdateUserStatus: (userId, isActive) => request(`/admin/students/${userId}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+adminUpdateStudentStatus: (userId, isActive) =>
+  request(`/admin/students/${userId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  }),
 facultyProfileGet: () => request('/faculty-profile', { method: 'GET' }),
 facultyProfilePut: (b) => request('/faculty-profile', { method: 'PUT', body: JSON.stringify(b) }),
 facultyProfilePutForm: (fd) => requestForm('/faculty-profile', fd),
