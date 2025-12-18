@@ -145,7 +145,7 @@ export default function AdminStudentProfile() {
           <>
             {hasPersonal && (
               <>
-                <h3 className="section-title">Personal</h3>
+                
                 <div className="grid-2">
                   <div><strong>First Name:</strong> {p.firstName || "-"}</div>
                   <div><strong>Last Name:</strong> {p.lastName || "-"}</div>
@@ -157,7 +157,7 @@ export default function AdminStudentProfile() {
 
             {hasContact && (
               <>
-                <h3 className="section-title">Contact</h3>
+               
                 <div className="grid-2">
                   <div><strong>Phone:</strong> {p.phone || "-"}</div>
                   <div><strong>Alt Phone:</strong> {p.altPhone || "-"}</div>
@@ -171,7 +171,7 @@ export default function AdminStudentProfile() {
 
             {hasAcademic && (
               <>
-                <h3 className="section-title">Academic</h3>
+                
                 <div className="grid-2">
                   <div><strong>Student ID:</strong> {p.studentId || "-"}</div>
                   <div><strong>Branch:</strong> {p.branch || "-"}</div>

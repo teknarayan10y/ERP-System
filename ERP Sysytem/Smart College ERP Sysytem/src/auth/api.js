@@ -59,4 +59,12 @@ adminCreateFaculty: (body) => request('/admin/faculty', { method: 'POST', body: 
     request(`/admin/faculty/${userId}/profile`, { method: 'PATCH', body: JSON.stringify(body) }),
   adminUpdateFacultyStatus: (userId, isActive) =>
     request(`/admin/faculty/${userId}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+  adminStudents: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/admin/students${qs ? `?${qs}` : ""}`, { method: 'GET' });
+},
+adminFaculty: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/admin/faculty${qs ? `?${qs}` : ""}`, { method: 'GET' });
+},
 };
