@@ -12,7 +12,6 @@ function splitName(name) {
 }
 
 // Convert "/uploads/..." to absolute API URL in dev/prod
-
 function toAbsoluteUploadUrl(pathOrUrl) {
   if (!pathOrUrl) return "";
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
@@ -58,12 +57,15 @@ export default function StudentProfile() {
     pincode: "",
 
     // Academic
+    studentId: "",         // NEW: visible, read-only
     registerNumber: "",
     rollNo: "",
     program: "",
-    department: "",
+    branch: "",            // NEW: replacing Department in UI
+    department: "",        // kept for backward compatibility if present in DB
     semester: "",
     section: "",
+    year: "",              // NEW
     admissionYear: "",
     passoutYear: "",
     cgpa: "",
@@ -127,6 +129,12 @@ export default function StudentProfile() {
             setForm((f) => ({
               ...f,
               ...p,
+              // Map and prefer branch over department for UI
+              branch: p.branch || p.department || f.branch,
+              // Include year if present
+              year: p.year || f.year,
+              // Ensure Student ID is preserved/showing
+              studentId: p.studentId || f.studentId,
               profileImageUrl: toAbsoluteUploadUrl(p.profileImage || f.profileImageUrl),
             }));
           }
@@ -186,10 +194,15 @@ export default function StudentProfile() {
         const fd = new FormData();
         fd.append("profileImage", form.profileImage);
         const keys = [
+          // Personal
           "firstName","lastName","gender","dob","bloodGroup","nationality",
+          // Contact
           "email","phone","altPhone","address","city","state","pincode",
-          "registerNumber","rollNo","program","department","semester","section",
+          // Academic (student can edit these; DO NOT include studentId)
+          "registerNumber","rollNo","program",
+          "branch","semester","section","year",
           "admissionYear","passoutYear","cgpa",
+          // Professional/Links/Other
           "github","linkedin","portfolio","leetcode","hackerrank","codechef","codeforces","kaggle","resumeLink",
           "aadhaar","hobbies","achievements","remarks",
         ];
@@ -205,6 +218,10 @@ export default function StudentProfile() {
           setForm((f) => ({
             ...f,
             ...res.profile,
+            // Keep UI expectations: map branch/department and year and studentId
+            branch: res.profile.branch || res.profile.department || f.branch,
+            year: res.profile.year || f.year,
+            studentId: res.profile.studentId || f.studentId,
             profileImage: null,
             profileImagePreview: "",
             profileImageUrl: bust || f.profileImageUrl,
@@ -216,9 +233,11 @@ export default function StudentProfile() {
         }
       } else {
         const payload = { ...form };
+        // Exclude preview-only and read-only fields
         delete payload.profileImagePreview;
         delete payload.profileImage;
         delete payload.profileImageUrl;
+        delete payload.studentId; // IMPORTANT: do not let student change ID
 
         const res = await api.profilePut(payload);
         if (res?.profile) {
@@ -228,6 +247,10 @@ export default function StudentProfile() {
           setForm((f) => ({
             ...f,
             ...res.profile,
+            // Keep UI expectations
+            branch: res.profile.branch || res.profile.department || f.branch,
+            year: res.profile.year || f.year,
+            studentId: res.profile.studentId || f.studentId,
             profileImageUrl: bust || f.profileImageUrl,
           }));
           if (bust) {
@@ -342,15 +365,25 @@ export default function StudentProfile() {
           {activeTab === "academic" && (
             <Section title="Academic Details" editing={editMode.academic} onEdit={() => toggleEdit("academic")}>
               <Grid>
-                <Input label="Register No" name="registerNumber" value={form.registerNumber} onChange={onChange} readOnly={!editMode.academic} />
+                {/* NEW: Student ID (read-only) */}
+                <Input label="Student ID" name="studentId" value={form.studentId} onChange={onChange} readOnly={true} disabled={true} />
+
+                <Input label="Register No" name="registerNumber" value={form.registerNumber} onChange={onChange} readOnly={true} disabled={true} />
                 <Input label="Roll No" name="rollNo" value={form.rollNo} onChange={onChange} readOnly={!editMode.academic} />
                 <Input label="Program" name="program" value={form.program} onChange={onChange} readOnly={!editMode.academic} />
-                <Input label="Department" name="department" value={form.department} onChange={onChange} readOnly={!editMode.academic} />
-                <Input label="Semester" name="semester" value={form.semester} onChange={onChange} readOnly={!editMode.academic} />
-                <Input label="Section" name="section" value={form.section} onChange={onChange} readOnly={!editMode.academic} />
-                <Input label="CGPA" name="cgpa" value={form.cgpa} onChange={onChange} readOnly={!editMode.academic} />
-                <Input label="AdmissionYear" name="admissionYear" value={form.admissionYear} onChange={onChange} readOnly={!editMode.academic} />
-                <Input label="PassoutYear" name="passoutYear" value={form.passoutYear} onChange={onChange} readOnly={!editMode.academic} />
+
+                {/* CHANGED: Department -> Branch */}
+                <Input label="Branch" name="branch" value={form.branch} onChange={onChange} readOnly={true} disabled={true} />
+
+                <Input label="Semester" name="semester" value={form.semester} onChange={onChange} readOnly={true} disabled={true} />
+                <Input label="Section" name="section" value={form.section} onChange={onChange} readOnly={true} disabled={true} />
+
+                {/* NEW: Year */}
+                <Input label="Year" name="year" value={form.year} onChange={onChange} readOnly={true} disabled={true}  />
+
+                <Input label="CGPA" name="cgpa" value={form.cgpa} onChange={onChange} readOnly={true} disabled={true} />
+                <Input label="AdmissionYear" name="admissionYear" value={form.admissionYear} onChange={onChange} readOnly={true} disabled={true} />
+                <Input label="PassoutYear" name="passoutYear" value={form.passoutYear} onChange={onChange} readOnly={true} disabled={true} />
               </Grid>
             </Section>
           )}
@@ -431,7 +464,7 @@ function Grid({ children }) {
   return <div className="grid-2">{children}</div>;
 }
 
-function Input({ label, name, value, onChange, type = "text", col, readOnly }) {
+function Input({ label, name, value, onChange, type = "text", col, readOnly, disabled }) {
   return (
     <label className={`field ${col ? "col-span-2" : ""}`}>
       <span>{label}</span>
@@ -441,6 +474,7 @@ function Input({ label, name, value, onChange, type = "text", col, readOnly }) {
         value={value ?? ""}
         onChange={onChange}
         readOnly={readOnly}
+        disabled={disabled}
         className={readOnly ? "readonly" : ""}
       />
     </label>

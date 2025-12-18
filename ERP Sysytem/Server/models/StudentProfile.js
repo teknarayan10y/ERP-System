@@ -21,17 +21,19 @@ const studentProfileSchema = new mongoose.Schema(
     state: String,
     pincode: String,
 
-    // Academic
-    registerNumber: String,
-    rollNo: String,
-    program: String,
-    department: String,
-    semester: String,
-    section: String,
-    admissionYear: String,
-    passoutYear: String,
-    cgpa: String,
-
+   // Academic
+registerNumber: String,
+rollNo: String,
+program: String,
+branch: String,
+semester: String,
+// in Server/models/StudentProfile.js
+studentId: { type: String, index: true, unique: true, sparse: true },
+year: String,        // <— add this line
+section: String,
+admissionYear: String,
+passoutYear: String,
+cgpa: String,
     // Professional
     profileImage: String,          // store URL/path if you add uploads later
     github: String,
