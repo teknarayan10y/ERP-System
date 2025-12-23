@@ -102,10 +102,10 @@ export default function AdminLayout() {
             <span>Faculty</span>
           </NavLink>
 
-          <NavLink to="/admin/courses" className="nav-item">
-            <span className="nav-icon">📚</span>
-            <span>Courses</span>
-          </NavLink>
+         <NavLink to="/admin/courses" className="nav-item">
+  <span className="nav-icon">📚</span>
+  <span>Courses</span>
+</NavLink>
 
           <NavLink to="/admin/departments" className="nav-item">
             <span className="nav-icon">🏢</span>

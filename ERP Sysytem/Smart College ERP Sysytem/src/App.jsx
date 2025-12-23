@@ -11,6 +11,7 @@ import StudentCourses from "./features/student/StudentCourses";
 import FacultyLayout from "./features/faculty/FacultyLayout";
 import FacultyDashboard from "./features/faculty/FacultyDashboard";
 import FacultyProfile from "./features/faculty/FacultyProfile";
+import FacultyMySubjects from "./features/faculty/FacultyMySubjects";
 
 /* -------- ADMIN -------- */
 import AdminLayout from "./features/admin/AdminLayout";
@@ -21,6 +22,9 @@ import AdminFaculty from "./features/admin/AdminFaculty";
 import AdminFacultyProfile from "./features/admin/AdminFacultyProfile";
 import AdminStudents from "./features/admin/AdminStudents";
 import AdminStudentProfile from "./features/admin/AdminStudentProfile";
+import AdminCourses from "./features/admin/AdminCourses";
+import CreateCourse from "./features/admin/CreateCourse";
+import EditCourse from "./features/admin/EditCourse";
 
 /* -------- AUTH -------- */
 import Login from "./pages/Login";
@@ -70,6 +74,7 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<FacultyDashboard />} />
            <Route path="profile" element={<FacultyProfile />} /> {/* NEW */}
+             <Route path="my-subjects" element={<FacultyMySubjects />} />
           {/* add more faculty pages later */}
         </Route>
 
@@ -83,6 +88,10 @@ export default function App() {
   <Route path="faculty/:facultyId" element={<AdminFacultyProfile />} />
             <Route path="students" element={<AdminStudents />} />
   <Route path="students/:studentId" element={<AdminStudentProfile />} />
+  <Route path="courses" element={<AdminCourses />} />
+<Route path="courses/create" element={<CreateCourse />} />
+
+<Route path="courses/:courseId/edit" element={<EditCourse />} />
 
           {/* add admin pages later */}
         </Route>

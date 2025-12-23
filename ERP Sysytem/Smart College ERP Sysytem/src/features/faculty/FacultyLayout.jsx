@@ -87,10 +87,10 @@ export default function FacultyLayout() {
             <span className="nav-icon">👤</span>
             <span>My Profile</span>
           </NavLink>
-          <NavLink to="/faculty/courses" className="nav-item">
-            <span className="nav-icon">📚</span>
-            <span>My Subjects</span>
-          </NavLink>
+          <NavLink to="/faculty/my-subjects" className="nav-item">
+  <span className="nav-icon">📚</span>
+  <span>My Subjects</span>
+</NavLink>
           <NavLink to="/faculty/students" className="nav-item">
             <span className="nav-icon">👨‍🎓</span>
             <span>My Students</span>
