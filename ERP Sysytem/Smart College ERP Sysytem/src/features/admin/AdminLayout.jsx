@@ -112,7 +112,7 @@ export default function AdminLayout() {
             <span>Departments</span>
           </NavLink>
 
-          <NavLink to="/admin/attendance" className="nav-item">
+         <NavLink to="/admin/attendance" className="nav-item">
   <span className="nav-icon">🗓️</span>
   <span>Attendance</span>
 </NavLink>

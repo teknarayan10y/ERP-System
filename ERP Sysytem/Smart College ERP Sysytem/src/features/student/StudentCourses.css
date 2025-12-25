@@ -179,3 +179,38 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.sem-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sem-chips .chip {
+  border: 1px solid #d1d5db;
+  background: #1818d3;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .06s;
+}
+.sem-chips .chip:hover {
+  background: #143a60;
+  transform: translateY(-1px);
+}
+
+/* Clickable "Sem X" in the stat */
+.link-chip {
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  padding: 0 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.link-chip:hover {
+  background: rgba(0,0,0,.05);
+  border-color: rgba(0,0,0,.08);
+}
