@@ -84,6 +84,40 @@ export const api = {
   adminCreateCourse: (body) =>
     request('/admin/courses', { method: 'POST', body: JSON.stringify(body) }),
   adminCourseById: (id) => request(`/admin/courses/${id}`, { method: 'GET' }),
-adminUpdateCourse: (id, body) => request(`/admin/courses/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-adminDeleteCourse: (id) => request(`/admin/courses/${id}`, { method: 'DELETE' }),
+  adminUpdateCourse: (id, body) =>
+    request(`/admin/courses/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminDeleteCourse: (id) =>
+    request(`/admin/courses/${id}`, { method: 'DELETE' }),
+
+  // Admin Departments
+  adminDepartments: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/admin/departments${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  },
+  adminCreateDepartment: (body) =>
+    request('/admin/departments', { method: 'POST', body: JSON.stringify(body) }),
+  adminDepartmentById: (id) =>
+    request(`/admin/departments/${id}`, { method: 'GET' }),
+  adminUpdateDepartment: (id, body) =>
+    request(`/admin/departments/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminDeleteDepartment: (id) =>
+    request(`/admin/departments/${id}`, { method: 'DELETE' }),
+
+  // Admin Attendance
+  adminAttendanceList: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/admin/attendance${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  },
+  adminAttendanceGet: (id) =>
+    request(`/admin/attendance/${id}`, { method: 'GET' }),
+  adminAttendanceUpsert: (body) =>
+    request('/admin/attendance', { method: 'POST', body: JSON.stringify(body) }),
+  adminAttendanceDelete: (id) =>
+    request(`/admin/attendance/${id}`, { method: 'DELETE' }),
+
+  // Student
+  studentCourses: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/dashboard/student-courses${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  },
 };

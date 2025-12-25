@@ -25,6 +25,9 @@ import AdminStudentProfile from "./features/admin/AdminStudentProfile";
 import AdminCourses from "./features/admin/AdminCourses";
 import CreateCourse from "./features/admin/CreateCourse";
 import EditCourse from "./features/admin/EditCourse";
+import AdminDepartments from "./features/admin/AdminDepartments";
+import CreateDepartment from "./features/admin/CreateDepartment";
+import EditDepartment from "./features/admin/EditDepartment";
 
 /* -------- AUTH -------- */
 import Login from "./pages/Login";
@@ -92,6 +95,11 @@ export default function App() {
 <Route path="courses/create" element={<CreateCourse />} />
 
 <Route path="courses/:courseId/edit" element={<EditCourse />} />
+<Route path="departments" element={<AdminDepartments />} />
+<Route path="departments/create" element={<CreateDepartment />} />
+<Route path="departments/:departmentId/edit" element={<EditDepartment />} />
+
+
 
           {/* add admin pages later */}
         </Route>
