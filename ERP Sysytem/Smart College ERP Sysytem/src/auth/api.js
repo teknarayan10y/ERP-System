@@ -103,17 +103,6 @@ export const api = {
   adminDeleteDepartment: (id) =>
     request(`/admin/departments/${id}`, { method: 'DELETE' }),
 
-  // Admin Attendance
-  adminAttendanceList: (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return request(`/admin/attendance${qs ? `?${qs}` : ''}`, { method: 'GET' });
-  },
-  adminAttendanceGet: (id) =>
-    request(`/admin/attendance/${id}`, { method: 'GET' }),
-  adminAttendanceUpsert: (body) =>
-    request('/admin/attendance', { method: 'POST', body: JSON.stringify(body) }),
-  adminAttendanceDelete: (id) =>
-    request(`/admin/attendance/${id}`, { method: 'DELETE' }),
 
   // Student
   studentCourses: (params = {}) => {

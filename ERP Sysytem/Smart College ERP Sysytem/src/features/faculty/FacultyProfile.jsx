@@ -6,7 +6,9 @@ import "../student/StudentProfile.css";
 function toAbsoluteUploadUrl(pathOrUrl) {
   if (!pathOrUrl) return "";
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+
   const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+  // Drop trailing /api if present to point to the server origin for static files
   const filesBase = apiBase.replace(/\/api$/i, "");
   const rel = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
   return `${filesBase}${rel}`;
@@ -172,8 +174,8 @@ export default function FacultyProfile() {
         // teachingSubjects as JSON string
         fd.append("teachingSubjects", JSON.stringify(subjects));
 
-        // image file
-        fd.append("image", newPhotoFile);
+        // IMPORTANT: field name must match multer.single('profileImage')
+        fd.append("profileImage", newPhotoFile);
 
         await api.facultyProfilePutForm(fd);
       } else {
@@ -288,23 +290,40 @@ export default function FacultyProfile() {
           <Field label="Pincode" name="pincode" value={form.pincode} onChange={onChange} readOnly={!edit} />
         </div>
       </section>
-     <br></br>
+      <br></br>
+
       {/* Faculty */}
       <section className="profile-section">
-        <div className="section-header">
-          <h2>Faculty</h2>
-          {!edit ? (
-            <button type="button" className="btn small ghost" onClick={() => setEdit(true)}>Edit</button>
-          ) : (
-            <button
-              type="button"
-              className="btn small ghost"
-              onClick={async () => { setErr(""); setOk(""); await reloadProfile(); setEdit(false); }}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
+       <div className="section-header">
+  <h2>Faculty</h2>
+  {!edit ? (
+    <button
+      type="button"
+      className="btn small ghost"
+      onClick={() => setEdit(true)}
+    >
+      Edit
+    </button>
+  ) : (
+    <>
+      <button
+        type="button"
+        className="btn small primary"
+        disabled={saving}
+        onClick={onSave}
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
+      <button
+        type="button"
+        className="btn small ghost"
+        onClick={async () => { setErr(""); setOk(""); await reloadProfile(); setEdit(false); }}
+      >
+        Cancel
+      </button>
+    </>
+  )}
+</div>
         <div className="grid-2">
           <Field
             label="Faculty ID"
@@ -338,7 +357,7 @@ export default function FacultyProfile() {
             <div className="photo-actions">
               <label className="btn small">
                 Upload Photo
-                <input type="file" accept="image/*" onChange={onPickPhoto} style={{ display: "none" }} />
+                <input type="file" accept="image/*" multiple={false} onChange={onPickPhoto} style={{ display: "none" }} />
               </label>
               {form.profileImageUrl && !form.profileImagePreview && (
                 <button
@@ -362,7 +381,8 @@ export default function FacultyProfile() {
           )}
         </div>
       </section>
-<br></br>
+      <br></br>
+
       {/* Career */}
       <section className="profile-section">
         <div className="section-header">
@@ -399,7 +419,8 @@ export default function FacultyProfile() {
           </label>
         </div>
       </section>
-<br></br>
+      <br></br>
+
       {/* Social */}
       <section className="profile-section">
         <div className="section-header">

@@ -94,7 +94,7 @@ export default function StudentProfile() {
   useEffect(() => {
     (async () => {
       try {
-        // 1) Prefill from cached user
+        // 1) Prefill from cached user (login info)
         const cached = getUser();
         if (cached) {
           const { firstName, lastName } = splitName(cached.name);
@@ -106,7 +106,7 @@ export default function StudentProfile() {
           }));
         }
 
-        // 2) Refresh from server (authoritative)
+        // 2) Refresh from server (authoritative user info)
         try {
           const me = await api.me();
           if (me?.user) {

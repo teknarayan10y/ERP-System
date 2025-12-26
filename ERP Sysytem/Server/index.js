@@ -17,7 +17,7 @@ const adminFacultyRoutes = require('./routes/adminFacultyRoutes');
 const adminCourseRoutes = require('./routes/adminCourseRoutes');
 const facultyCourseRoutes = require('./routes/facultyCourseRoutes');
 const adminDepartmentRoutes = require('./routes/adminDepartmentRoutes'); 
-const adminAttendanceRoutes = require('./routes/adminAttendanceRoutes'); 
+
 
 dotenv.config();
 
@@ -45,7 +45,7 @@ app.use('/api/admin/courses', adminCourseRoutes);
 app.use('/api/faculty-profile', facultyProfileRoutes);
 app.use('/api/faculty', facultyCourseRoutes); // faculty-only endpoints (e.g., /faculty/courses)
 app.use('/api/admin/departments', adminDepartmentRoutes);
-app.use('/api/admin/attendance', adminAttendanceRoutes);
+
 
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
