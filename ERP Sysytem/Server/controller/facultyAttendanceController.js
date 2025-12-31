@@ -1,0 +1,214 @@
+const mongoose = require('mongoose');
+const { Types: { ObjectId } } = mongoose;
+
+const Attendance = require('../models/Attendance');
+const Course = require('../models/Course');
+const StudentProfile = require('../models/StudentProfile');
+const User = require('../models/User');
+
+function normalizeDate(v) {
+  const d = new Date(v);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function recomputeCounters(doc) {
+  const s = Array.isArray(doc.dailySchedule) ? doc.dailySchedule : [];
+  doc.totalClasses = s.length;
+  doc.presentClasses = s.filter(x => x.status === 'PRESENT').length;
+  doc.onDutyClasses = s.filter(x => x.status === 'ON-DUTY').length;
+  doc.absentClasses = s.filter(x => x.status === 'ABSENT').length;
+}
+
+// GET /api/faculty/attendance
+exports.myAttendance = async (req, res, next) => {
+  try {
+    const { from, to, date, session, academicYear, semester } = req.query;
+    const q = { userId: req.user._id };
+    if (date) q.date = normalizeDate(date);
+    if (from) q.date = Object.assign(q.date || {}, { $gte: normalizeDate(from) });
+    if (to) q.date = Object.assign(q.date || {}, { $lte: normalizeDate(to) });
+    if (academicYear) q.academicYear = academicYear;
+    if (semester) q.semester = semester;
+
+    const items = await Attendance.find(q).sort({ date: -1 });
+    const mapped = items.map(doc => {
+      if (!session) return doc;
+      const pick = (doc.dailySchedule || []).find(s => s.session === session);
+      return Object.assign({}, doc.toObject(), { dailySchedule: pick ? [pick] : [] });
+    });
+    res.json({ items: mapped });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// GET /api/faculty/attendance/courses
+exports.myCourses = async (req, res, next) => {
+  try {
+    const items = await Course.find({ faculty: req.user._id, isActive: true })
+      .sort({ name: 1 })
+      .select('name semester section department');
+    res.json({ items });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// GET /api/faculty/attendance/students?courseId=...
+exports.courseStudents = async (req, res, next) => {
+  try {
+    const { courseId } = req.query;
+    if (!courseId || !ObjectId.isValid(courseId)) {
+      return res.status(400).json({ message: 'Invalid courseId' });
+    }
+
+    const course = await Course.findById(courseId).select('semester section department faculty');
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (String(course.faculty) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Not allowed for this course' });
+    }
+
+    const sem = course.semester;
+    const sec = (course.section || '').toUpperCase();
+    const dept = (course.department || '').toLowerCase();
+
+    const profiles = await StudentProfile.find({}).lean();
+    const passUserIds = [];
+    for (const p of profiles) {
+      const okSem = sem == null || String(p.semester) === String(sem);
+      const okSec = !sec || (p.section || '').toUpperCase() === sec;
+      const bran = (p.branch || p.department || '').toLowerCase();
+      const okDept = !dept || bran === dept || dept.includes(bran) || bran.includes(dept);
+      if (okSem && okSec && okDept && p.user) {
+        passUserIds.push(p.user);
+      }
+    }
+
+    if (!passUserIds.length) return res.json({ items: [] });
+
+    const users = await User.find({ _id: { $in: passUserIds } })
+      .select('firstName lastName email department')
+      .lean();
+
+    const userById = new Map(users.map(u => [String(u._id), u]));
+    const items = passUserIds.map(id => {
+      const u = userById.get(String(id)) || null;
+      const p = profiles.find(pr => String(pr.user) === String(id)) || null;
+      return { user: u, profile: p };
+    });
+
+    res.json({ items });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// POST /api/faculty/attendance/mark-student-session
+exports.markStudentSession = async (req, res, next) => {
+  try {
+    const {
+      studentId,
+      date,
+      session,
+      status,
+      subject = '',
+      topic = '',
+      academicYear = '2025-26',
+      semester = 'Odd',
+      courseId
+    } = req.body;
+
+    if (!studentId || !ObjectId.isValid(studentId)) {
+      return res.status(400).json({ message: 'Invalid studentId' });
+    }
+    if (!date || !session || !status) {
+      return res.status(400).json({ message: 'date, session, status required' });
+    }
+
+    if (courseId) {
+      if (!ObjectId.isValid(courseId)) return res.status(400).json({ message: 'Invalid courseId' });
+      const course = await Course.findById(courseId).select('faculty');
+      if (!course) return res.status(404).json({ message: 'Course not found' });
+      if (String(course.faculty) !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Not allowed for this course' });
+      }
+    }
+
+    const d = normalizeDate(date);
+    let doc = await Attendance.findOne({ userId: studentId, date: d });
+    if (!doc) {
+      doc = new Attendance({ userId: studentId, date: d, academicYear, semester, dailySchedule: [] });
+    } else {
+      doc.academicYear = academicYear || doc.academicYear;
+      doc.semester = semester || doc.semester;
+    }
+
+    const idx = doc.dailySchedule.findIndex(s => s.session === session);
+    const entry = {
+      session,
+      status,
+      subject,
+      faculty: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+      topic,
+      date: d
+    };
+    if (idx >= 0) doc.dailySchedule[idx] = entry; else doc.dailySchedule.push(entry);
+
+    recomputeCounters(doc);
+    await doc.save();
+    res.json({ item: doc });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// POST /api/faculty/attendance/bulk-day
+exports.bulkDay = async (req, res, next) => {
+  try {
+    const { date, courseId, items = [], academicYear = '2025-26', semester = 'Odd' } = req.body;
+    if (!date || !courseId || !ObjectId.isValid(courseId)) {
+      return res.status(400).json({ message: 'date and valid courseId required' });
+    }
+
+    const course = await Course.findById(courseId).select('name faculty');
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (String(course.faculty) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Not allowed for this course' });
+    }
+
+    const d = normalizeDate(date);
+    let count = 0;
+    for (const it of items) {
+      const { studentId, session, status, subject = course.name || '', topic = '' } = it;
+      if (!studentId || !ObjectId.isValid(studentId) || !session || !status) continue;
+
+      let doc = await Attendance.findOne({ userId: studentId, date: d });
+      if (!doc) {
+        doc = new Attendance({ userId: studentId, date: d, academicYear, semester, dailySchedule: [] });
+      } else {
+        doc.academicYear = academicYear || doc.academicYear;
+        doc.semester = semester || doc.semester;
+      }
+
+      const idx = doc.dailySchedule.findIndex(s => s.session === session);
+      const entry = {
+        session,
+        status,
+        subject,
+        faculty: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+        topic,
+        date: d
+      };
+      if (idx >= 0) doc.dailySchedule[idx] = entry; else doc.dailySchedule.push(entry);
+
+      recomputeCounters(doc);
+      await doc.save();
+      count++;
+    }
+
+    res.json({ ok: true, count });
+  } catch (e) {
+    next(e);
+  }
+};

@@ -12,6 +12,8 @@ import FacultyLayout from "./features/faculty/FacultyLayout";
 import FacultyDashboard from "./features/faculty/FacultyDashboard";
 import FacultyProfile from "./features/faculty/FacultyProfile";
 import FacultyMySubjects from "./features/faculty/FacultyMySubjects";
+import FacultyAttendance from './features/faculty/FacultyAttendance';
+
 
 /* -------- ADMIN -------- */
 import AdminLayout from "./features/admin/AdminLayout";
@@ -28,6 +30,8 @@ import EditCourse from "./features/admin/EditCourse";
 import AdminDepartments from "./features/admin/AdminDepartments";
 import CreateDepartment from "./features/admin/CreateDepartment";
 import EditDepartment from "./features/admin/EditDepartment";
+import AdminAttendance from "./features/admin/AdminAttendance";
+
 
 /* -------- AUTH -------- */
 import Login from "./pages/Login";
@@ -78,6 +82,8 @@ export default function App() {
           <Route path="dashboard" element={<FacultyDashboard />} />
            <Route path="profile" element={<FacultyProfile />} /> {/* NEW */}
              <Route path="my-subjects" element={<FacultyMySubjects />} />
+             <Route path="attendance" element={<FacultyAttendance />} />
+              
           {/* add more faculty pages later */}
         </Route>
 
@@ -98,6 +104,7 @@ export default function App() {
 <Route path="departments" element={<AdminDepartments />} />
 <Route path="departments/create" element={<CreateDepartment />} />
 <Route path="departments/:departmentId/edit" element={<EditDepartment />} />
+ <Route path="attendance" element={<AdminAttendance />} />
 
 
 

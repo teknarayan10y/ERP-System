@@ -1,8 +1,7 @@
-// Server/index.js
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const path = require('path');
 const fs = require('fs');
 
 const connectDB = require('./.config/db');
@@ -16,12 +15,20 @@ const facultyProfileRoutes = require('./routes/facultyProfileRoutes');
 const adminFacultyRoutes = require('./routes/adminFacultyRoutes');
 const adminCourseRoutes = require('./routes/adminCourseRoutes');
 const facultyCourseRoutes = require('./routes/facultyCourseRoutes');
-const adminDepartmentRoutes = require('./routes/adminDepartmentRoutes'); 
+const adminDepartmentRoutes = require('./routes/adminDepartmentRoutes');
+const adminAttendanceRoutes = require('./routes/adminAttendanceRoutes');
+const facultyAttendanceRoutes = require('./routes/facultyAttendanceRoutes');
 
+// ADD THESE TWO LINES
+const mongoose = require('mongoose');
+const Attendance = require('./models/Attendance');
 
 dotenv.config();
 
 const app = express();
+
+// connect DB (your file likely already does this)
+connectDB();
 
 // Static uploads
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -32,32 +39,31 @@ app.use('/uploads', express.static(uploadsDir));
 app.use(cors());
 app.use(express.json());
 
-// Routes
+// ONE-TIME INDEX FIX/SYNC ON START
+mongoose.connection.once('open', async () => {
+  try {
+    await Attendance.collection.dropIndex('course_1_date_1').catch(() => {});
+    await Attendance.syncIndexes();
+    console.log('[Attendance] indexes synced');
+  } catch (e) {
+    console.error('[Attendance] index sync error:', e && e.message ? e.message : e);
+  }
+});
+
+// Routes (as you already have)
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/users', userRoutes);
+app.use('/api/user', userRoutes);
 app.use('/api/profile', profileRoutes);
-
 app.use('/api/admin/students', adminStudentRoutes);
+app.use('/api/faculty-profile', facultyProfileRoutes);
 app.use('/api/admin/faculty', adminFacultyRoutes);
 app.use('/api/admin/courses', adminCourseRoutes);
-
-app.use('/api/faculty-profile', facultyProfileRoutes);
-app.use('/api/faculty', facultyCourseRoutes); // faculty-only endpoints (e.g., /faculty/courses)
+app.use('/api/faculty', facultyCourseRoutes);
+app.use('/api/faculty/attendance', facultyAttendanceRoutes);
 app.use('/api/admin/departments', adminDepartmentRoutes);
+app.use('/api/admin/attendance', adminAttendanceRoutes);
 
-
-
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
-
-// Start
+// Start server (your existing listen)
 const PORT = process.env.PORT || 5000;
-
-connectDB()
-  .then(() => {
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-  })
-  .catch((err) => {
-    console.error('Failed to start server:', err);
-    process.exit(1);
-  });
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));

@@ -17,6 +17,15 @@ async function request(path, options = {}) {
   return data;
 }
 
+function toQS(params) {
+  if (!params) return '';
+  const esc = encodeURIComponent;
+  const q = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${esc(k)}=${esc(v)}`)
+    .join('&');
+  return q ? `?${q}` : '';
+}
 // New: for multipart/form-data (do not set Content-Type yourself)
 async function requestForm(path, formData, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -62,6 +71,28 @@ export const api = {
   facultyProfilePutForm: (fd) => requestForm('/faculty-profile', fd),
   facultyMyCourses: () => request('/faculty/courses', { method: 'GET' }),
 
+  //Faculty Attendance
+ facultyAttendanceList: (params) =>
+  request(`/faculty/attendance${toQS(params)}`, { method: 'GET' }),
+
+facultyCourses: () =>
+  request('/faculty/attendance/courses', { method: 'GET' }),
+
+facultyCourseStudents: (courseId) =>
+  request(`/faculty/attendance/students${toQS({ courseId })}`, { method: 'GET' }),
+
+facultyMarkStudentSession: (payload) =>
+  request('/faculty/attendance/mark-student-session', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+
+facultyBulkDay: (payload) =>
+  request('/faculty/attendance/bulk-day', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+
   // Admin Faculty
   adminCreateFaculty: (body) =>
     request('/admin/faculty', { method: 'POST', body: JSON.stringify(body) }),
@@ -103,6 +134,19 @@ export const api = {
   adminDeleteDepartment: (id) =>
     request(`/admin/departments/${id}`, { method: 'DELETE' }),
 
+// Admin Attendance
+    adminAttendanceList: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/admin/attendance${qs ? `?${qs}` : ''}`, { method: 'GET' });
+},
+adminAttendanceMarkSession: (body) =>
+  request('/admin/attendance/mark-session', { method: 'POST', body: JSON.stringify(body) }),
+adminAttendanceBulkDay: (body) =>
+  request('/admin/attendance/bulk-day', { method: 'POST', body: JSON.stringify(body) }),
+adminAttendanceSummary: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/admin/attendance/summary${qs ? `?${qs}` : ''}`, { method: 'GET' });
+},
 
   // Student
   studentCourses: (params = {}) => {
