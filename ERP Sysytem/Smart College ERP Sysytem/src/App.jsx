@@ -6,11 +6,13 @@ import StudentLayout from "./features/student/StudentLayout";
 import StudentDashboard from "./features/student/StudentDashboard";
 import StudentProfile from "./features/student/StudentProfile";
 import StudentCourses from "./features/student/StudentCourses";
+import StudentAttendance from "./features/student/StudentAttendance";
 
 /* -------- FACULTY -------- */
 import FacultyLayout from "./features/faculty/FacultyLayout";
 import FacultyDashboard from "./features/faculty/FacultyDashboard";
 import FacultyProfile from "./features/faculty/FacultyProfile";
+import FacultyMyStudents from "./features/faculty/FacultyMyStudents";
 import FacultyMySubjects from "./features/faculty/FacultyMySubjects";
 import FacultyAttendance from './features/faculty/FacultyAttendance';
 
@@ -31,6 +33,7 @@ import AdminDepartments from "./features/admin/AdminDepartments";
 import CreateDepartment from "./features/admin/CreateDepartment";
 import EditDepartment from "./features/admin/EditDepartment";
 import AdminAttendance from "./features/admin/AdminAttendance";
+
 
 
 /* -------- AUTH -------- */
@@ -74,6 +77,7 @@ export default function App() {
           <Route path="dashboard" element={<StudentDashboard />} />
           <Route path="profile" element={<StudentProfile />} />
           <Route path="courses" element={<StudentCourses />} />
+          <Route path="attendance" element={<StudentAttendance />} />
         </Route>
 
         {/* ================= FACULTY ================= */}
@@ -81,6 +85,7 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<FacultyDashboard />} />
            <Route path="profile" element={<FacultyProfile />} /> {/* NEW */}
+           <Route path="students" element={<FacultyMyStudents />} />
              <Route path="my-subjects" element={<FacultyMySubjects />} />
              <Route path="attendance" element={<FacultyAttendance />} />
               

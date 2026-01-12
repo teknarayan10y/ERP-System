@@ -772,3 +772,25 @@ input.readonly {
   border-radius: 50%;
   display: block;
 }
+
+html, body, #root {
+  height: 100%;
+}
+.student-layout {
+  display: flex;
+  height: 100vh;   /* was min-height; this ensures a bounded scroll area */
+  width: 100%;
+}
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  position: relative;
+}
+.page-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: var(--card);
+}

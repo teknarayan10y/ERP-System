@@ -53,7 +53,7 @@ async function updateStudentProfile(req, res) {
       // Contact
       'email','phone','altPhone','address','city','state','pincode',
       // Academic
-      'studentId','branch','semester','year','cgpa','skills','projects',
+      'studentId','branch','semester', 'section','year','cgpa','skills','projects',
       // Links/Other
       'github','linkedin','portfolio','resumeLink','remarks',
       // Optionally: 'profileImage' (if you want to clear path)
@@ -89,10 +89,15 @@ async function updateStudentProfile(req, res) {
     await profile.save();
 
     // Optionally sync name/email on user
-    const userUpdate = {};
-    if (update.firstName !== undefined) userUpdate.firstName = update.firstName;
-    if (update.lastName !== undefined) userUpdate.lastName = update.lastName;
-    if (update.email !== undefined) userUpdate.email = update.email;
+    // after Object.assign(profile, update) and before saving user:
+const userUpdate = {};
+if (update.firstName !== undefined || update.lastName !== undefined) {
+  const fn = update.firstName ?? profile.firstName ?? '';
+  const ln = update.lastName ?? profile.lastName ?? '';
+  const full = `${fn} ${ln}`.trim();
+  if (full) userUpdate.name = full;       // <-- set User.name
+}
+if (update.email !== undefined) userUpdate.email = update.email;
 
     let user = null;
     if (Object.keys(userUpdate).length) {

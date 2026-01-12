@@ -24,5 +24,6 @@ router.post('/mark-student-session', ctrl.markStudentSession);
 
 // Bulk day mark for a course
 router.post('/bulk-day', ctrl.bulkDay);
-
+// Day status for a course/date/session
+router.get('/day-status', ctrl.dayStatus);
 module.exports = router;

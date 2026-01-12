@@ -93,6 +93,10 @@ facultyBulkDay: (payload) =>
     body: JSON.stringify(payload)
   }),
 
+  // Faculty attendance: fetch day status per student
+facultyDayStatus: (params) =>
+  request(`/faculty/attendance/day-status${toQS(params)}`, { method: 'GET' }),
+
   // Admin Faculty
   adminCreateFaculty: (body) =>
     request('/admin/faculty', { method: 'POST', body: JSON.stringify(body) }),
@@ -147,10 +151,14 @@ adminAttendanceSummary: (params = {}) => {
   const qs = new URLSearchParams(params).toString();
   return request(`/admin/attendance/summary${qs ? `?${qs}` : ''}`, { method: 'GET' });
 },
-
-  // Student
-  studentCourses: (params = {}) => {
+//student attendance
+ studentCourses: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request(`/dashboard/student-courses${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  },
+  // Student attendance read-only
+  studentAttendanceList: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/student/attendance${qs ? `?${qs}` : ''}`, { method: 'GET' });
   },
 };

@@ -64,6 +64,7 @@ export default function AdminStudentProfile() {
         studentId: form.studentId,
         branch: form.branch,
         semester: form.semester,
+        section: form.section,
         year: form.year,
         cgpa: form.cgpa,
         projects: form.projects,
@@ -109,7 +110,7 @@ export default function AdminStudentProfile() {
   const hasPersonal = p.firstName || p.lastName || p.gender || p.dob;
   const hasContact = p.phone || p.altPhone || p.address || p.city || p.state || p.pincode;
   const hasAcademic =
-    p.studentId || p.branch || p.semester || p.year || p.cgpa ||
+    p.studentId || p.branch || p.semester || p.section || p.year || p.cgpa ||
     (Array.isArray(p.skills) && p.skills.length) || p.projects;
   const hasLinks = p.github || p.linkedin || p.portfolio || p.resumeLink || p.remarks;
 
@@ -176,6 +177,7 @@ export default function AdminStudentProfile() {
                   <div><strong>Student ID:</strong> {p.studentId || "-"}</div>
                   <div><strong>Branch:</strong> {p.branch || "-"}</div>
                   <div><strong>Semester:</strong> {p.semester || "-"}</div>
+                  <div><strong>Section:</strong> {p.section || "-"}</div>
                   <div><strong>Year:</strong> {p.year || "-"}</div>
                   <div><strong>CGPA:</strong> {p.cgpa ?? "-"}</div>
                   {(Array.isArray(p.skills) && p.skills.length > 0) && (
@@ -263,6 +265,9 @@ export default function AdminStudentProfile() {
             </label>
             <label className="field"><span>Semester</span>
               <input name="semester" value={form.semester || ""} onChange={onChange} />
+            </label>
+            <label className="field"><span>Section</span>
+              <input name="section" value={form.section || ""} onChange={onChange} />
             </label>
             <label className="field"><span>Year</span>
               <input name="year" value={form.year || ""} onChange={onChange} />

@@ -18,6 +18,7 @@ const facultyCourseRoutes = require('./routes/facultyCourseRoutes');
 const adminDepartmentRoutes = require('./routes/adminDepartmentRoutes');
 const adminAttendanceRoutes = require('./routes/adminAttendanceRoutes');
 const facultyAttendanceRoutes = require('./routes/facultyAttendanceRoutes');
+const studentAttendanceRoutes = require('./routes/studentAttendanceRoutes');
 
 // ADD THESE TWO LINES
 const mongoose = require('mongoose');
@@ -63,6 +64,7 @@ app.use('/api/faculty', facultyCourseRoutes);
 app.use('/api/faculty/attendance', facultyAttendanceRoutes);
 app.use('/api/admin/departments', adminDepartmentRoutes);
 app.use('/api/admin/attendance', adminAttendanceRoutes);
+app.use('/api/student/attendance', studentAttendanceRoutes);
 
 // Start server (your existing listen)
 const PORT = process.env.PORT || 5000;

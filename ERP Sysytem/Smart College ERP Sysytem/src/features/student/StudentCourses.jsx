@@ -9,6 +9,10 @@ export default function StudentCourses() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // NEW: attendance state (view-only)
+  const [attRows, setAttRows] = useState([]);
+  const [attLoading, setAttLoading] = useState(false);
+
   // Initial load to get profile + default semester + courses
   useEffect(() => {
     let cancel = false;
@@ -57,8 +61,49 @@ export default function StudentCourses() {
     return () => { cancel = true; };
   }, [semester]);
 
+  // NEW: Load student attendance (for computing subject-wise %)
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setAttLoading(true);
+      try {
+        // Fetch all available (or add from/to later if needed)
+        const r = await api.studentAttendanceList({});
+        if (!cancel) setAttRows(r.items || []);
+      } catch {
+        if (!cancel) setAttRows([]);
+      } finally {
+        if (!cancel) setAttLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, []);
+
   // Using server-side filtering; just render what we have
   const filtered = useMemo(() => courses, [courses]);
+
+  // NEW: Build subject-wise percentage map from attendance rows
+  const subjectPctMap = useMemo(() => {
+    const bySubj = new Map(); // normalized subject -> { present, onDuty, absent, total }
+    for (const d of (attRows || [])) {
+      const daily = d?.dailySchedule || [];
+      for (const s of daily) {
+        const key = ((s.subject || '').trim().toLowerCase()) || '(no subject)';
+        const curr = bySubj.get(key) || { present: 0, onDuty: 0, absent: 0, total: 0 };
+        curr.total += 1;
+        if (s.status === 'PRESENT') curr.present += 1;
+        else if (s.status === 'ON-DUTY') curr.onDuty += 1;
+        else if (s.status === 'ABSENT') curr.absent += 1;
+        bySubj.set(key, curr);
+      }
+    }
+    const pctMap = new Map();
+    for (const [key, v] of bySubj.entries()) {
+      const pct = v.total ? Math.round(((v.present + v.onDuty) / v.total) * 100) : 0;
+      pctMap.set(key, { pct, ...v });
+    }
+    return pctMap;
+  }, [attRows]);
 
   if (loading) {
     return (
@@ -119,7 +164,12 @@ export default function StudentCourses() {
       <div className="elite-grid">
         {filtered.map((course) => {
           const progress = Number.isFinite(course.progress) ? course.progress : 0;
-          const attendance = Number.isFinite(course.attendance) ? course.attendance : 0;
+
+          // NEW: attendance derived from subject (course.name)
+          const subjKey = (course.name || '').trim().toLowerCase();
+          const subjStats = subjectPctMap.get(subjKey);
+          const attendance = subjStats ? subjStats.pct : 0;
+
           const status = course.status || (progress >= 100 ? "Completed" : "Ongoing");
           const facultyName = course.facultyName || course.faculty?.name || "-";
 

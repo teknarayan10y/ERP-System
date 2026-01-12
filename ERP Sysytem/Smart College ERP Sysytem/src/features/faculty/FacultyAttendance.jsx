@@ -28,6 +28,11 @@ export default function FacultyAttendance() {
   const [students, setStudents] = useState([]);
   const [att, setAtt] = useState({}); // per-student row map
 
+  const subject = useMemo(() => {
+    const c = (courses || []).find(x => x._id === courseId);
+    return c?.name || '';
+  }, [courseId, courses]);
+
   useEffect(() => {
     let cancel = false;
     api.facultyCourses()
@@ -77,6 +82,38 @@ export default function FacultyAttendance() {
     return () => { cancel = true; };
   }, [tab, date, useRange, fromDate, toDate]);
 
+  // Load students list
+  useEffect(() => {
+    if (tab !== 'students' || !courseId) { setStudents([]); return; }
+    let cancel = false;
+    api.facultyCourseStudents(courseId)
+      .then(r => { if (!cancel) setStudents(r.items || []); })
+      .catch(() => {});
+    return () => { cancel = true; };
+  }, [tab, courseId]);
+
+  // Load saved marks for this course/date/session/subject
+  useEffect(() => {
+    if (tab !== 'students' || !courseId) { setAtt({}); return; }
+    let cancel = false;
+    setAtt({});
+    (async () => {
+      try {
+        const r = await api.facultyDayStatus({ date, session, courseId, subject });
+        if (cancel) return;
+        const map = {};
+        for (const it of (r.items || [])) {
+          if (!it.studentId) continue;
+          map[it.studentId] = { status: it.status || '', subject: it.subject || '', topic: it.topic || '' };
+        }
+        setAtt(map);
+      } catch {
+        if (!cancel) setAtt({});
+      }
+    })();
+    return () => { cancel = true; };
+  }, [tab, courseId, date, session, subject]);
+
   // Auto-refresh every 15s while on "My Attendance"
   useEffect(() => {
     if (tab !== 'my') return;
@@ -90,21 +127,14 @@ export default function FacultyAttendance() {
     return () => clearInterval(id);
   }, [tab, date, useRange, fromDate, toDate]);
 
-  useEffect(() => {
-    if (tab !== 'students' || !courseId) { setStudents([]); return; }
-    let cancel = false;
-    api.facultyCourseStudents(courseId)
-      .then(r => { if (!cancel) setStudents(r.items || []); })
-      .catch(() => {});
-    return () => { cancel = true; };
-  }, [tab, courseId]);
-
   function getStudentId(p) { return p?.user?._id || p?.userId || p?.id || ''; }
   function displayName(p) {
     const u = p?.user || {};
-    const first = u.firstName || '';
-    const last = u.lastName || '';
-    return (first + ' ' + last).trim() || u.email || 'Unknown';
+    const prof = p?.profile || {};
+    const first = prof.firstName || u.firstName || '';
+    const last  = prof.lastName  || u.lastName  || '';
+    const idLike = prof.registerNumber || prof.rollNo || '';
+    return (first + ' ' + last).trim() || idLike || u.email || 'Unknown';
   }
   function isValidObjectId(id) { return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id); }
 
@@ -194,29 +224,39 @@ export default function FacultyAttendance() {
 
   // Students marking actions
   async function setRow(uId, patch) {
+    const course = (courses || []).find(c => c._id === courseId);
     const next = { ...(att[uId] || {}), ...patch };
+    if (!next.subject && course?.name) next.subject = course.name;
+
     setAtt(prev => ({ ...prev, [uId]: next }));
-    if (!next.status || !isValidObjectId(uId)) return;
-    try {
-      await api.facultyMarkStudentSession({
-        studentId: uId, date, session, status: next.status,
-        subject: next.subject || '', topic: next.topic || '', courseId
-      });
-    } catch {}
+
+    if (!courseId || !next.status || !isValidObjectId(uId)) return;
+    await api.facultyMarkStudentSession({
+      studentId: uId,
+      date,
+      session,
+      status: next.status,
+      subject: next.subject || (course?.name || ''),
+      topic: next.topic || '',
+      courseId
+    });
   }
 
   async function bulk(status) {
     const items = (students || [])
-      .map(p => getStudentId(p))
+      .map(p => {
+        const id = p?.user?._id || p?.userId || p?.id || '';
+        return id;
+      })
       .filter(id => isValidObjectId(id))
-      .map(id => ({ studentId: id, session, status }));
+      .map(id => ({ studentId: id, session, status, subject })); // include subject
+
     if (!items.length) return;
-    try {
-      await api.facultyBulkDay({ date, courseId, items });
-      const map = {};
-      for (const it of items) map[it.studentId] = { ...(att[it.studentId] || {}), status: it.status };
-      setAtt(prev => ({ ...prev, ...map }));
-    } catch {}
+    await api.facultyBulkDay({ date, courseId, items });
+
+    const map = {};
+    for (const it of items) map[it.studentId] = { ...(att[it.studentId] || {}), status: it.status, subject };
+    setAtt(prev => ({ ...prev, ...map }));
   }
 
   return (
@@ -504,7 +544,7 @@ export default function FacultyAttendance() {
                   {(students || []).length === 0 ? (
                     <tr><td colSpan={5} className="no-results">No records</td></tr>
                   ) : (students || []).map((p, idx) => {
-                    const id = getStudentId(p);
+                    const id = p?.user?._id || p?.userId || p?.id || '';
                     const row = att[id] || {};
                     const canPersist = isValidObjectId(id);
                     const course = (courses || []).find(c => c._id === courseId);

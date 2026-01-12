@@ -369,7 +369,7 @@ export default function StudentProfile() {
                 <Input label="Student ID" name="studentId" value={form.studentId} onChange={onChange} readOnly={true} disabled={true} />
 
                 <Input label="Register No" name="registerNumber" value={form.registerNumber} onChange={onChange} readOnly={true} disabled={true} />
-                <Input label="Roll No" name="rollNo" value={form.rollNo} onChange={onChange} readOnly={!editMode.academic} />
+                <Input label="Roll No" name="rollNo" value={form.rollNo} onChange={onChange} readOnly={true} disabled={true}/>
                 <Input label="Program" name="program" value={form.program} onChange={onChange} readOnly={!editMode.academic} />
 
                 {/* CHANGED: Department -> Branch */}

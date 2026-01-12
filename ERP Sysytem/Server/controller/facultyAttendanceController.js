@@ -105,6 +105,10 @@ exports.courseStudents = async (req, res, next) => {
 };
 
 // POST /api/faculty/attendance/mark-student-session
+// Constraints:
+// - courseId required; faculty ownership enforced
+// - subject is forced to course.name
+// - only one entry per subject per date (session stored but does not create extra allocation)
 exports.markStudentSession = async (req, res, next) => {
   try {
     const {
@@ -112,7 +116,7 @@ exports.markStudentSession = async (req, res, next) => {
       date,
       session,
       status,
-      subject = '',
+      subject, // ignored; overridden
       topic = '',
       academicYear = '2025-26',
       semester = 'Odd',
@@ -125,15 +129,16 @@ exports.markStudentSession = async (req, res, next) => {
     if (!date || !session || !status) {
       return res.status(400).json({ message: 'date, session, status required' });
     }
-
-    if (courseId) {
-      if (!ObjectId.isValid(courseId)) return res.status(400).json({ message: 'Invalid courseId' });
-      const course = await Course.findById(courseId).select('faculty');
-      if (!course) return res.status(404).json({ message: 'Course not found' });
-      if (String(course.faculty) !== String(req.user._id)) {
-        return res.status(403).json({ message: 'Not allowed for this course' });
-      }
+    if (!courseId || !ObjectId.isValid(courseId)) {
+      return res.status(400).json({ message: 'valid courseId required' });
     }
+
+    const course = await Course.findById(courseId).select('name faculty');
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (String(course.faculty) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Not allowed for this course' });
+    }
+    const normalizedSubject = (course.name || '').trim();
 
     const d = normalizeDate(date);
     let doc = await Attendance.findOne({ userId: studentId, date: d });
@@ -144,16 +149,34 @@ exports.markStudentSession = async (req, res, next) => {
       doc.semester = semester || doc.semester;
     }
 
-    const idx = doc.dailySchedule.findIndex(s => s.session === session);
+    // One entry per subject per day (ignore session for allocation uniqueness)
+    const idx = doc.dailySchedule.findIndex(
+      s => ((s.subject || '').trim().toLowerCase() === normalizedSubject.toLowerCase())
+    );
+
     const entry = {
-      session,
+      session, // stored for reference
       status,
-      subject,
+      subject: normalizedSubject,
       faculty: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
       topic,
       date: d
     };
-    if (idx >= 0) doc.dailySchedule[idx] = entry; else doc.dailySchedule.push(entry);
+
+    if (idx >= 0) {
+      doc.dailySchedule[idx] = entry;
+    } else {
+      doc.dailySchedule.push(entry);
+    }
+
+    // Defensive: ensure no duplicate same-subject entries
+    const seen = new Set();
+    doc.dailySchedule = doc.dailySchedule.filter(s => {
+      const key = (s.subject || '').trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     recomputeCounters(doc);
     await doc.save();
@@ -164,6 +187,7 @@ exports.markStudentSession = async (req, res, next) => {
 };
 
 // POST /api/faculty/attendance/bulk-day
+// For each student: subject is forced to course.name; upsert one entry per subject per day
 exports.bulkDay = async (req, res, next) => {
   try {
     const { date, courseId, items = [], academicYear = '2025-26', semester = 'Odd' } = req.body;
@@ -176,11 +200,12 @@ exports.bulkDay = async (req, res, next) => {
     if (String(course.faculty) !== String(req.user._id)) {
       return res.status(403).json({ message: 'Not allowed for this course' });
     }
+    const normalizedSubject = (course.name || '').trim();
 
     const d = normalizeDate(date);
     let count = 0;
     for (const it of items) {
-      const { studentId, session, status, subject = course.name || '', topic = '' } = it;
+      const { studentId, session, status, topic = '' } = it;
       if (!studentId || !ObjectId.isValid(studentId) || !session || !status) continue;
 
       let doc = await Attendance.findOne({ userId: studentId, date: d });
@@ -191,16 +216,34 @@ exports.bulkDay = async (req, res, next) => {
         doc.semester = semester || doc.semester;
       }
 
-      const idx = doc.dailySchedule.findIndex(s => s.session === session);
+      // Upsert by subject only (one allocation per subject per day)
+      const idx = doc.dailySchedule.findIndex(
+        s => ((s.subject || '').trim().toLowerCase() === normalizedSubject.toLowerCase())
+      );
+
       const entry = {
-        session,
+        session, // stored for reference
         status,
-        subject,
+        subject: normalizedSubject,
         faculty: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
         topic,
         date: d
       };
-      if (idx >= 0) doc.dailySchedule[idx] = entry; else doc.dailySchedule.push(entry);
+
+      if (idx >= 0) {
+        doc.dailySchedule[idx] = entry;
+      } else {
+        doc.dailySchedule.push(entry);
+      }
+
+      // Defensive dedupe by subject
+      const seen = new Set();
+      doc.dailySchedule = doc.dailySchedule.filter(s => {
+        const key = (s.subject || '').trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
 
       recomputeCounters(doc);
       await doc.save();
@@ -208,6 +251,75 @@ exports.bulkDay = async (req, res, next) => {
     }
 
     res.json({ ok: true, count });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// GET /api/faculty/attendance/day-status?date=YYYY-MM-DD&courseId=...&subject=...&session=FN|AN (session optional)
+exports.dayStatus = async (req, res, next) => {
+  try {
+    const { date, session, courseId } = req.query;
+    if (!date || !courseId) {
+      return res.status(400).json({ message: 'date and courseId required' });
+    }
+    if (!ObjectId.isValid(courseId)) {
+      return res.status(400).json({ message: 'Invalid courseId' });
+    }
+
+    // Validate course and ownership
+    const course = await Course.findById(courseId).select('semester section department faculty name');
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (String(course.faculty) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Not allowed for this course' });
+    }
+
+    // Determine which students belong to this course (reuse courseStudents logic)
+    const sem = course.semester;
+    const sec = (course.section || '').toUpperCase();
+    const dept = (course.department || '').toLowerCase();
+
+    const profiles = await StudentProfile.find({}).lean();
+    const passUserIds = [];
+    for (const p of profiles) {
+      const okSem = sem == null || String(p.semester) === String(sem);
+      const okSec = !sec || (p.section || '').toUpperCase() === sec;
+      const bran = (p.branch || p.department || '').toLowerCase();
+      const okDept = !dept || bran === dept || dept.includes(bran) || bran.includes(dept);
+      if (okSem && okSec && okDept && p.user) {
+        passUserIds.push(p.user);
+      }
+    }
+
+    if (!passUserIds.length) return res.json({ items: [] });
+
+    // Load attendance for that date for those students
+    const d = normalizeDate(date);
+    const docs = await Attendance.find({
+      userId: { $in: passUserIds },
+      date: d
+    }).lean();
+
+    // Subject filter is required for accurate subject-wise fetch; default to course name
+    const { subject: subjectParam } = req.query;
+    const subjectFilter = (subjectParam || course.name || '').trim().toLowerCase();
+
+    // Pick the single subject entry (session NOT used for allocation uniqueness)
+    const items = [];
+    for (const doc of docs) {
+      const entry = (doc.dailySchedule || []).find(s =>
+        ((s.subject || '').trim().toLowerCase() === subjectFilter)
+      );
+      if (!entry) continue;
+      items.push({
+        studentId: String(doc.userId),
+        status: entry.status || '',
+        subject: entry.subject || '',
+        topic: entry.topic || ''
+      });
+    }
+
+    res.json({ items });
   } catch (e) {
     next(e);
   }
