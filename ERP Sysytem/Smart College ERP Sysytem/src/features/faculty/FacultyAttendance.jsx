@@ -33,6 +33,25 @@ export default function FacultyAttendance() {
     return c?.name || '';
   }, [courseId, courses]);
 
+  // Semester defaults and subject-wide overall (semester) totals
+  function semesterDefaultRange() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const semStart = new Date(now.getMonth() < 6 ? `${y}-01-01` : `${y}-07-01`);
+    const semEnd = now;
+    return {
+      from: semStart.toISOString().slice(0, 10),
+      to: semEnd.toISOString().slice(0, 10)
+    };
+  }
+
+  const [{ from: semFromDefault, to: semToDefault }] = useState(() => [semesterDefaultRange()]);
+  const [semFrom, setSemFrom] = useState(semFromDefault);
+  const [semTo, setSemTo] = useState(semToDefault);
+  const [overallSemTotals, setOverallSemTotals] = useState({
+    total: 0, present: 0, onDuty: 0, absent: 0, pct: 0
+  });
+
   useEffect(() => {
     let cancel = false;
     api.facultyCourses()
@@ -92,27 +111,34 @@ export default function FacultyAttendance() {
     return () => { cancel = true; };
   }, [tab, courseId]);
 
-  // Load saved marks for this course/date/session/subject
+  // Subject-wise semester overall (using analytics subject-summary)
   useEffect(() => {
-    if (tab !== 'students' || !courseId) { setAtt({}); return; }
-    let cancel = false;
-    setAtt({});
-    (async () => {
+    if (!subject) return;
+    let cancelled = false;
+
+    async function loadSubjectSemester() {
       try {
-        const r = await api.facultyDayStatus({ date, session, courseId, subject });
-        if (cancel) return;
-        const map = {};
-        for (const it of (r.items || [])) {
-          if (!it.studentId) continue;
-          map[it.studentId] = { status: it.status || '', subject: it.subject || '', topic: it.topic || '' };
+        const res = await api.facultyAnalyticsSubjectSummary({ from: semFrom, to: semTo });
+        const items = Array.isArray(res?.items) ? res.items : [];
+        const row = items.find(
+          it => (it.subject || '').trim().toLowerCase() === (subject || '').trim().toLowerCase()
+        );
+        if (!cancelled) {
+          if (row) {
+            const { total = 0, present = 0, onDuty = 0, absent = 0, pct = 0 } = row;
+            setOverallSemTotals({ total, present, onDuty, absent, pct });
+          } else {
+            setOverallSemTotals({ total: 0, present: 0, onDuty: 0, absent: 0, pct: 0 });
+          }
         }
-        setAtt(map);
       } catch {
-        if (!cancel) setAtt({});
+        if (!cancelled) setOverallSemTotals({ total: 0, present: 0, onDuty: 0, absent: 0, pct: 0 });
       }
-    })();
-    return () => { cancel = true; };
-  }, [tab, courseId, date, session, subject]);
+    }
+
+    loadSubjectSemester();
+    return () => { cancelled = true; };
+  }, [subject, semFrom, semTo]);
 
   // Auto-refresh every 15s while on "My Attendance"
   useEffect(() => {
@@ -417,6 +443,10 @@ export default function FacultyAttendance() {
                     <p className="sub-progress-label">Absent</p>
                   </div>
                 </div>
+
+                {/* NEW: Overall (Semester) for current subject */}
+                
+              
               </div>
             </div>
 

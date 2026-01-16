@@ -4,7 +4,8 @@ const BASE = import.meta.env.VITE_API_BASE_URL;
 
 async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  headers.set('Content-Type', 'application/json');
+  const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (!isForm) headers.set('Content-Type', 'application/json');
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
@@ -16,7 +17,6 @@ async function request(path, options = {}) {
   }
   return data;
 }
-
 function toQS(params) {
   if (!params) return '';
   const esc = encodeURIComponent;
@@ -78,8 +78,11 @@ export const api = {
 facultyCourses: () =>
   request('/faculty/attendance/courses', { method: 'GET' }),
 
-facultyCourseStudents: (courseId) =>
-  request(`/faculty/attendance/students${toQS({ courseId })}`, { method: 'GET' }),
+// Replace the current facultyCourseStudents with this:
+facultyCourseStudents: (arg) => {
+  const params = (typeof arg === 'string') ? { courseId: arg } : (arg || {});
+  return request(`/faculty/attendance/students${toQS(params)}`, { method: 'GET' });
+},
 
 facultyMarkStudentSession: (payload) =>
   request('/faculty/attendance/mark-student-session', {
@@ -92,6 +95,45 @@ facultyBulkDay: (payload) =>
     method: 'POST',
     body: JSON.stringify(payload)
   }),
+
+
+  // faculty assignment APIs
+// faculty assignment APIs
+facultyAssignmentsList: () =>
+  request('/faculty/assignments', { method: 'GET' }),
+
+facultyAssignmentsCreate: (payload = {}, files = []) => {
+  const fd = new FormData();
+  // Expected keys: title (string), courseId (string), description (optional), dueDate (optional)
+  if (payload.title) fd.append('title', String(payload.title));
+  if (payload.courseId) fd.append('courseId', String(payload.courseId));
+  if (payload.description) fd.append('description', String(payload.description));
+  if (payload.dueDate) fd.append('dueDate', String(payload.dueDate)); // yyyy-mm-dd or ISO
+
+  (files || []).forEach(f => {
+    if (f) fd.append('files', f);
+  });
+
+  // IMPORTANT: do not set Content-Type; the request() helper should pass FormData directly
+  return request('/faculty/assignments', {
+    method: 'POST',
+    body: fd
+  });
+},
+  //faculty dashboard functions
+  facultyAnalyticsToday: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/faculty/analytics/today${qs ? `?${qs}` : ''}`, { method: 'GET' });
+},
+facultyAnalyticsSubjectSummary: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/faculty/analytics/subject-summary${qs ? `?${qs}` : ''}`, { method: 'GET' });
+},
+facultyAnalyticsRecent: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/faculty/analytics/recent${qs ? `?${qs}` : ''}`, { method: 'GET' });
+},
+
 
   // Faculty attendance: fetch day status per student
 facultyDayStatus: (params) =>

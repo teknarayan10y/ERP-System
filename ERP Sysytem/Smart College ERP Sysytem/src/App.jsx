@@ -15,7 +15,7 @@ import FacultyProfile from "./features/faculty/FacultyProfile";
 import FacultyMyStudents from "./features/faculty/FacultyMyStudents";
 import FacultyMySubjects from "./features/faculty/FacultyMySubjects";
 import FacultyAttendance from './features/faculty/FacultyAttendance';
-
+import  AssignmentUpload  from "./features/faculty/AssignmentUpload";  
 
 /* -------- ADMIN -------- */
 import AdminLayout from "./features/admin/AdminLayout";
@@ -88,6 +88,7 @@ export default function App() {
            <Route path="students" element={<FacultyMyStudents />} />
              <Route path="my-subjects" element={<FacultyMySubjects />} />
              <Route path="attendance" element={<FacultyAttendance />} />
+            <Route path="assignments" element={<AssignmentUpload />} />
               
           {/* add more faculty pages later */}
         </Route>

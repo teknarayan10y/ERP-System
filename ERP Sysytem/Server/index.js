@@ -19,8 +19,11 @@ const adminDepartmentRoutes = require('./routes/adminDepartmentRoutes');
 const adminAttendanceRoutes = require('./routes/adminAttendanceRoutes');
 const facultyAttendanceRoutes = require('./routes/facultyAttendanceRoutes');
 const studentAttendanceRoutes = require('./routes/studentAttendanceRoutes');
-
+const facultyAnalyticsRoutes = require('./routes/facultyAnalyticsRoutes');
+const facultyAssignmentRoutes = require('./routes/assignmentRoutes');
 // ADD THESE TWO LINES
+
+
 const mongoose = require('mongoose');
 const Attendance = require('./models/Attendance');
 
@@ -36,8 +39,11 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
 
+
 // Middleware
 app.use(cors());
+app.use('/api/faculty/assignments', facultyAssignmentRoutes);
+
 app.use(express.json());
 
 // ONE-TIME INDEX FIX/SYNC ON START
@@ -65,7 +71,23 @@ app.use('/api/faculty/attendance', facultyAttendanceRoutes);
 app.use('/api/admin/departments', adminDepartmentRoutes);
 app.use('/api/admin/attendance', adminAttendanceRoutes);
 app.use('/api/student/attendance', studentAttendanceRoutes);
+app.use('/api/faculty/analytics', facultyAnalyticsRoutes);
 
+// static serving (public)
+app.use('/uploads', require('express').static(path.join(__dirname, 'uploads')));
+
+app.use((err, req, res, next) => {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ message: 'File too large.' });
+  }
+  if (err && err.code === 'LIMIT_FIELD_SIZE') {
+    return res.status(413).json({ message: 'Text field too large.' });
+  }
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ message: 'Request entity too large.' });
+  }
+  next(err);
+});
 // Start server (your existing listen)
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));

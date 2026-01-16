@@ -1,85 +1,161 @@
-import React from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import "./FacultyDashboard.css";
+import { api } from "../../auth/api";
 
-/* ================== MAIN COMPONENT ================== */
 export default function FacultyDashboard() {
-  const kpis = [
-    { title: "Subjects Handling", value: 4 },
-    { title: "Total Students", value: 182 },
-    { title: "Average Attendance", value: "86%", status: "good" },
-    { title: "Pending Attendance", value: 3, status: "warn" },
-    { title: "Pending Evaluations", value: 2, status: "bad" },
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const [subjectsHandling, setSubjectsHandling] = useState(0);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [pendingAttendance, setPendingAttendance] = useState(0);       // count (today)
+  const [averageAttendance, setAverageAttendance] = useState(0);       // range avg, fallback to today
+
+  // Date for "today" analytics
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [lastUpdatedAt, setLastUpdatedAt] = useState("");
+
+  // Range for average (1st of current month -> selected date)
+  const [fromDate, toDate] = useMemo(() => {
+    const dSel = new Date(date);
+    const start = new Date(dSel.getFullYear(), dSel.getMonth(), 1);
+    return [start.toISOString().slice(0, 10), date];
+  }, [date]);
+
+  // Static lists – customize as needed
+  const notices = [
+    "Internal marks submission deadline – Friday",
+    "Department meeting today at 3:00 PM",
+    "Attendance audit next week",
+  ];
+  const tasks = [
+    "Mark DBMS attendance",
+    "Upload CIA-1 marks",
+    "Evaluate Assignment-2",
   ];
 
-  const schedule = [
-    {
-      time: "09:00 – 10:00",
-      subject: "Operating Systems",
-      section: "CSE-A",
-      room: "B-204",
-    },
-    {
-      time: "11:00 – 12:00",
-      subject: "DBMS",
-      section: "CSE-B",
-      room: "A-102",
-    },
-    {
-      time: "02:00 – 04:00",
-      subject: "Computer Networks Lab",
-      section: "CSE-A",
-      room: "Lab-3",
-    },
-  ];
+  async function loadDashboard() {
+    setLoading(true);
+    setErr("");
+    try {
+      // 1) Subjects handling = faculty courses count
+      const coursesRes = await api.facultyCourses();
+      const courses = Array.isArray(coursesRes?.items) ? coursesRes.items : [];
+      setSubjectsHandling(courses.length);
+
+      // 2) Total students = unique across all courses
+      const ids = new Set();
+      await Promise.all(
+        courses.map(async (c) => {
+          try {
+            const r = await api.facultyCourseStudents(c._id);
+            for (const it of (r?.items || [])) {
+              const uid =
+                it?.user?._id || it?.userId || it?.id || (it?.profile?.user || "");
+              if (uid) ids.add(String(uid));
+            }
+          } catch {}
+        })
+      );
+      setTotalStudents(ids.size);
+
+      // 3) Today + Range analytics
+      const [todayRes, rangeRes] = await Promise.all([
+        api.facultyAnalyticsToday({ date }),
+        api.facultyAnalyticsSubjectSummary({ from: fromDate, to: toDate }),
+      ]);
+
+      // Pending (today) — number only
+      const totals = todayRes?.totals || {};
+      setPendingAttendance(Number(totals.unmarked) || 0);
+
+      // Average: weighted across range (present+onDuty)/total; fallback to today's pct
+      const items = Array.isArray(rangeRes?.items) ? rangeRes.items : [];
+      let total = 0, attended = 0;
+      for (const it of items) {
+        const t = Number(it.total) || 0;
+        const p = Number(it.present) || 0;
+        const od = Number(it.onDuty) || 0;
+        total += t;
+        attended += (p + od);
+      }
+      const rangePct = total ? Math.round((attended / total) * 100) : 0;
+      const todayPct = Number(totals.pct) || 0;
+      setAverageAttendance(rangePct || todayPct);
+
+      setLastUpdatedAt(new Date().toLocaleTimeString());
+    } catch (e) {
+      setErr(e?.message || "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard();
+  }, [date]);
+
+  useEffect(() => {
+    const id = setInterval(loadDashboard, 15000);
+    return () => clearInterval(id);
+  }, [date]);
 
   return (
     <div className="faculty">
-
       {/* HEADER */}
       <header className="faculty-header">
         <h1>Faculty Dashboard</h1>
         <p>Academic overview & daily teaching operations</p>
+
+        {/* Toolbar (styled) */}
+        <div className="fd-toolbar">
+          <div className="fd-field">
+            <label className="fd-label">Date</label>
+            <input
+              className="fd-input"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
+          <button
+            className="fd-btn"
+            onClick={loadDashboard}
+            disabled={loading}
+            title="Refresh (auto every 15s)"
+          >
+            {loading ? "Refreshing…" : "↻ Refresh"}
+          </button>
+
+          {lastUpdatedAt && (
+            <span className="fd-badge">Last updated: {lastUpdatedAt}</span>
+          )}
+        </div>
+
+        {err && <div className="alert error" style={{ marginTop: 8 }}>{err}</div>}
       </header>
 
       {/* KPI */}
       <section className="faculty-kpis">
-        {kpis.map((kpi, i) => (
-          <Kpi key={i} {...kpi} />
-        ))}
+        <Kpi title="Subjects Handling" value={subjectsHandling} />
+        <Kpi title="Total Students" value={totalStudents} />
+        <Kpi title="Average Attendance" value={`${averageAttendance}%`} status="good" />
+        <Kpi title="Pending Attendance" value={pendingAttendance} status={pendingAttendance > 0 ? "warn" : "good"} />
       </section>
 
       {/* CONTENT GRID */}
       <section className="faculty-grid">
-
-        {/* SCHEDULE */}
-        <Card title="Today’s Teaching Schedule" wide>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Subject</th>
-                <th>Section</th>
-                <th>Room</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {schedule.map((row, i) => (
-                <tr key={i}>
-                  <td>{row.time}</td>
-                  <td>{row.subject}</td>
-                  <td>{row.section}</td>
-                  <td>{row.room}</td>
-                  <td>
-                    <button className="btn btn-outline">Attendance</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Pending Tasks */}
+        <Card title="Pending Tasks">
+          <ul className="list">
+            {tasks.map((t, i) => (
+              <li key={i}>{t}</li>
+            ))}
+          </ul>
         </Card>
 
-        {/* QUICK ACTIONS */}
+        {/* Quick Actions */}
         <Card title="Quick Actions">
           <div className="actions">
             <button className="btn btn-primary">Mark Attendance</button>
@@ -88,24 +164,14 @@ export default function FacultyDashboard() {
           </div>
         </Card>
 
-        {/* TASKS */}
-        <Card title="Pending Tasks">
-          <ul className="list">
-            <li>Mark DBMS attendance</li>
-            <li>Upload CIA-1 marks</li>
-            <li>Evaluate Assignment-2</li>
-          </ul>
-        </Card>
-
-        {/* NOTICES */}
+        {/* Important Notices */}
         <Card title="Important Notices" wide>
           <ul className="notice">
-            <li>Internal marks submission deadline – Friday</li>
-            <li>Department meeting today at 3:00 PM</li>
-            <li>Attendance audit next week</li>
+            {notices.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
           </ul>
         </Card>
-
       </section>
     </div>
   );
