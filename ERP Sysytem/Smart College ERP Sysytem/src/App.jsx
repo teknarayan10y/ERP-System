@@ -7,6 +7,7 @@ import StudentDashboard from "./features/student/StudentDashboard";
 import StudentProfile from "./features/student/StudentProfile";
 import StudentCourses from "./features/student/StudentCourses";
 import StudentAttendance from "./features/student/StudentAttendance";
+import StudentAssignments from "./features/student/StudentAssignments";
 
 /* -------- FACULTY -------- */
 import FacultyLayout from "./features/faculty/FacultyLayout";
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="profile" element={<StudentProfile />} />
           <Route path="courses" element={<StudentCourses />} />
           <Route path="attendance" element={<StudentAttendance />} />
+          <Route path="assignments" element={<StudentAssignments />} />
         </Route>
 
         {/* ================= FACULTY ================= */}

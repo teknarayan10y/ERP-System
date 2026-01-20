@@ -102,6 +102,8 @@ facultyBulkDay: (payload) =>
 facultyAssignmentsList: () =>
   request('/faculty/assignments', { method: 'GET' }),
 
+
+
 facultyAssignmentsCreate: (payload = {}, files = []) => {
   const fd = new FormData();
   // Expected keys: title (string), courseId (string), description (optional), dueDate (optional)
@@ -120,6 +122,16 @@ facultyAssignmentsCreate: (payload = {}, files = []) => {
     body: fd
   });
 },
+
+// Faculty: list submissions for an assignment
+facultyAssignmentSubmissions: (assignmentId) =>
+  request(
+    `/faculty/assignments/${encodeURIComponent(assignmentId)}/submissions`,
+    { method: 'GET' }
+  ),
+
+
+
   //faculty dashboard functions
   facultyAnalyticsToday: (params = {}) => {
   const qs = new URLSearchParams(params).toString();
@@ -138,6 +150,10 @@ facultyAnalyticsRecent: (params = {}) => {
   // Faculty attendance: fetch day status per student
 facultyDayStatus: (params) =>
   request(`/faculty/attendance/day-status${toQS(params)}`, { method: 'GET' }),
+
+// Faculty: list submissions for an assignment
+
+
 
   // Admin Faculty
   adminCreateFaculty: (body) =>
@@ -203,4 +219,25 @@ adminAttendanceSummary: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request(`/student/attendance${qs ? `?${qs}` : ''}`, { method: 'GET' });
   },
+
+  // Student assignments
+studentAssignments: (params = {}) => {
+  return request(`/student/assignments${toQS(params)}`, { method: 'GET' });
+},
+
+// Submit an assignment (multipart). body: { note? }, files: File[]
+studentSubmitAssignment: (assignmentId, payload = {}, files = []) => {
+  const fd = new FormData();
+  if (payload.note) fd.append('note', String(payload.note));
+  (files || []).forEach(f => { if (f) fd.append('files', f); });
+  // do not set Content-Type
+  return request(`/student/assignments/${encodeURIComponent(assignmentId)}/submissions`, {
+    method: 'POST',
+    body: fd
+  });
+},
+
+// Get my submission for an assignment
+studentMySubmission: (assignmentId) =>
+  request(`/student/assignments/${encodeURIComponent(assignmentId)}/submissions/me`, { method: 'GET' }),
 };

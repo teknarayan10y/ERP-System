@@ -1,7 +1,7 @@
+// src/features/faculty/AssignmentUpload.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../auth/api';
 import './AssignmentUpload.css';
-// If your layout/buttons/inputs are styled in these, import them as needed:
 // import '../student/StudentDashboard.css';
 // import '../faculty/FacultyDashboard.css';
 
@@ -12,6 +12,9 @@ function getCourseId(c) {
 }
 function fileUrl(f) {
   return `${API_ORIGIN}${f.url || ''}`;
+}
+function absFileUrl(f) {
+  return `${API_ORIGIN}${f?.url || f?.path || ''}`;
 }
 function openAssignment(a) {
   const first = (a.files || [])[0];
@@ -36,6 +39,12 @@ export default function AssignmentUpload() {
   const [dragOver, setDragOver] = useState(false);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
+
+  // NEW: submissions state
+  const [subs, setSubs] = useState([]);
+  const [subsLoading, setSubsLoading] = useState(false);
+  const [subsErr, setSubsErr] = useState('');
+  const [selectedA, setSelectedA] = useState(null); // selected assignment
 
   useEffect(() => {
     let mounted = true;
@@ -148,6 +157,21 @@ export default function AssignmentUpload() {
       return map.get(cid) || 'Course';
     };
   }, [courses]);
+
+  // NEW: load submissions for an assignment
+  async function loadSubs(assignmentId) {
+    setSubsLoading(true);
+    setSubsErr('');
+    try {
+      const res = await api.facultyAssignmentSubmissions(assignmentId);
+      setSubs(res?.items || []);
+    } catch (e) {
+      setSubs([]);
+      setSubsErr(e.message || 'Failed to load submissions');
+    } finally {
+      setSubsLoading(false);
+    }
+  }
 
   return (
     <div className="faculty">
@@ -279,13 +303,14 @@ export default function AssignmentUpload() {
                   <th>Due</th>
                   <th>Files</th>
                   <th>Uploaded</th>
+                  <th>Submissions</th> {/* NEW */}
                 </tr>
               </thead>
               <tbody>
                 {loadingAssignments ? (
-                  <tr><td colSpan={5} className="no-results">Loading…</td></tr>
+                  <tr><td colSpan={6} className="no-results">Loading…</td></tr>
                 ) : (assignments || []).length === 0 ? (
-                  <tr><td colSpan={5} className="no-results">No assignments yet</td></tr>
+                  <tr><td colSpan={6} className="no-results">No assignments yet</td></tr>
                 ) : (assignments || []).map((a) => (
                   <tr key={a._id}>
                     <td>
@@ -303,6 +328,14 @@ export default function AssignmentUpload() {
                     <td>{a.dueDate ? new Date(a.dueDate).toLocaleDateString() : '-'}</td>
                     <td>{Array.isArray(a.files) ? a.files.length : 0}</td>
                     <td>{a.createdAt ? new Date(a.createdAt).toLocaleString() : '-'}</td>
+                    <td>
+                      <button
+                        className="link-button"
+                       onClick={() => { console.log('View subs for', a._id, a.title); setSelectedA(a); loadSubs(a._id); }}
+                      >
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -332,6 +365,70 @@ export default function AssignmentUpload() {
             </div>
           )}
         </div>
+
+        {/* NEW: Submissions panel */}
+        {selectedA && (
+          <div className="au-section" style={{ marginTop: 18 }}>
+            <div className="au-header" style={{ marginBottom: 8 }}>
+              <h3>Submissions for: {selectedA.title}</h3>
+              <div className="au-actions">
+                <button className="btn" onClick={() => { if (selectedA?._id) loadSubs(selectedA._id); }}>
+                  {subsLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+                <button className="btn" onClick={() => { setSelectedA(null); setSubs([]); }}>
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {subsErr && <div className="alert error" style={{ marginBottom: 8 }}>{subsErr}</div>}
+            {subsLoading && <div>Loading submissions…</div>}
+            {!subsLoading && !subsErr && subs.length === 0 && (
+              <div className="empty-hint">No submissions yet.</div>
+            )}
+
+            {!subsLoading && !subsErr && subs.length > 0 && (
+              <div className="table-wrapper">
+                <table className="attendance-table">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Submitted At</th>
+                      <th>Note</th>
+                      <th>Files</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subs.map(s => (
+                      <tr key={s._id}>
+                        <td>{s.studentName || '-'}</td>
+                        <td>{s.submittedAt ? new Date(s.submittedAt).toLocaleString() : '-'}</td>
+                        <td style={{ maxWidth: 360, whiteSpace: 'pre-wrap' }}>{s.note || ''}</td>
+                        <td>
+                          <div className="file-list">
+                            {(s.files || []).map((f, i) => (
+                              <a
+                                key={`${s._id}-${i}`}
+                                className="file-link"
+                                href={absFileUrl(f)}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={f.originalName || 'file'}
+                                download={f.originalName}
+                              >
+                                📎 {f.originalName || `file-${i+1}`}
+                              </a>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="au-section" style={{ marginTop: 18 }}>
           <h3 style={{ marginBottom: 8 }}>

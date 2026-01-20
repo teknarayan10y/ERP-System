@@ -21,6 +21,10 @@ const facultyAttendanceRoutes = require('./routes/facultyAttendanceRoutes');
 const studentAttendanceRoutes = require('./routes/studentAttendanceRoutes');
 const facultyAnalyticsRoutes = require('./routes/facultyAnalyticsRoutes');
 const facultyAssignmentRoutes = require('./routes/assignmentRoutes');
+const facultySubmissionRoutes = require('./routes/facultySubmissionRoutes');
+const studentAssignmentRoutes = require('./routes/studentAssignmentRoutes');
+const studentSubmissionRoutes = require('./routes/studentSubmissionRoutes');
+
 // ADD THESE TWO LINES
 
 
@@ -42,6 +46,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Middleware
 app.use(cors());
+app.use('/api/faculty/assignments', facultySubmissionRoutes);
 app.use('/api/faculty/assignments', facultyAssignmentRoutes);
 
 app.use(express.json());
@@ -71,8 +76,11 @@ app.use('/api/faculty/attendance', facultyAttendanceRoutes);
 app.use('/api/admin/departments', adminDepartmentRoutes);
 app.use('/api/admin/attendance', adminAttendanceRoutes);
 app.use('/api/student/attendance', studentAttendanceRoutes);
-app.use('/api/faculty/analytics', facultyAnalyticsRoutes);
+app.use('/api/student/assignments', studentAssignmentRoutes);
+app.use('/api/student/assignments', studentSubmissionRoutes);
 
+
+app.use('/api/faculty/analytics', facultyAnalyticsRoutes);
 // static serving (public)
 app.use('/uploads', require('express').static(path.join(__dirname, 'uploads')));
 

@@ -1,6 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearToken } from "../../auth/storage";
+import {
+  FaChartBar,
+  FaUsers,
+  FaUser,
+  FaBook,
+  FaBuilding,
+  FaCalendarCheck,
+  FaMoneyBill,
+  FaCog,
+  FaSignOutAlt,
+} from "react-icons/fa";
 import { api } from "../../auth/api";
 import "../student/StudentDashboard.css"; // 👈 reuse SAME CSS
 
@@ -85,53 +96,52 @@ export default function AdminLayout() {
           <span>Admin Panel</span>
         </div>
 
-        <nav className="sidebar-nav">
+     <nav className="sidebar-nav">
+  <NavLink to="/admin/dashboard" className="nav-item">
+    <FaChartBar className="nav-icon" />
+    <span>Dashboard</span>
+  </NavLink>
 
-          <NavLink to="/admin/dashboard" className="nav-item">
-            <span className="nav-icon">📊</span>
-            <span>Dashboard</span>
-          </NavLink>
+  <NavLink to="/admin/students" className="nav-item">
+    <FaUsers className="nav-icon" />
+    <span>Students</span>
+  </NavLink>
 
-          <NavLink to="/admin/students" className="nav-item">
-            <span className="nav-icon">👨‍🎓</span>
-            <span>Students</span>
-          </NavLink>
+  <NavLink to="/admin/faculty" className="nav-item">
+    <FaUser className="nav-icon" />
+    <span>Faculty</span>
+  </NavLink>
 
-          <NavLink to="/admin/faculty" className="nav-item">
-            <span className="nav-icon">👨‍🏫</span>
-            <span>Faculty</span>
-          </NavLink>
+  <NavLink to="/admin/courses" className="nav-item">
+    <FaBook className="nav-icon" />
+    <span>Courses</span>
+  </NavLink>
 
-         <NavLink to="/admin/courses" className="nav-item">
-  <span className="nav-icon">📚</span>
-  <span>Courses</span>
-</NavLink>
+  <NavLink to="/admin/departments" className="nav-item">
+    <FaBuilding className="nav-icon" />
+    <span>Departments</span>
+  </NavLink>
 
-          <NavLink to="/admin/departments" className="nav-item">
-            <span className="nav-icon">🏢</span>
-            <span>Departments</span>
-          </NavLink>
+  <NavLink to="/admin/attendance" className="nav-item">
+    <FaCalendarCheck className="nav-icon" />
+    <span>Attendance</span>
+  </NavLink>
 
-         <NavLink to="/admin/attendance" className="nav-item">
-  <span className="nav-icon">🗓️</span>
-  <span>Attendance</span>
-</NavLink>
+  <NavLink to="/admin/fees" className="nav-item">
+    <FaMoneyBill className="nav-icon" />
+    <span>Fees</span>
+  </NavLink>
 
-          <NavLink to="/admin/fees" className="nav-item">
-            <span className="nav-icon">💰</span>
-            <span>Fees</span>
-          </NavLink>
-
-          <NavLink to="/admin/settings" className="nav-item">
-            <span className="nav-icon">⚙️</span>
-            <span>Settings</span>
-          </NavLink>
-
-        </nav>
+  <NavLink to="/admin/settings" className="nav-item">
+    <FaCog className="nav-icon" />
+    <span>Settings</span>
+  </NavLink>
+</nav>
 
         <button className="btn logout full" onClick={handleLogout}>
-          Logout
-        </button>
+  <FaSignOutAlt />
+  <span>Logout</span>
+</button>
       </aside>
 
       {/* ===== MAIN ===== */}
