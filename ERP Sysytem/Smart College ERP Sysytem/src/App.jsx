@@ -16,7 +16,9 @@ import FacultyProfile from "./features/faculty/FacultyProfile";
 import FacultyMyStudents from "./features/faculty/FacultyMyStudents";
 import FacultyMySubjects from "./features/faculty/FacultyMySubjects";
 import FacultyAttendance from './features/faculty/FacultyAttendance';
-import  AssignmentUpload  from "./features/faculty/AssignmentUpload";  
+import AssignmentUpload from "./features/faculty/AssignmentUpload";
+import FacultyMarksEntry from "./features/faculty/FacultyMarksEntry";
+import FacultyMarksSummary from './features/faculty/FacultyMarksSummary';
 
 /* -------- ADMIN -------- */
 import AdminLayout from "./features/admin/AdminLayout";
@@ -34,6 +36,7 @@ import AdminDepartments from "./features/admin/AdminDepartments";
 import CreateDepartment from "./features/admin/CreateDepartment";
 import EditDepartment from "./features/admin/EditDepartment";
 import AdminAttendance from "./features/admin/AdminAttendance";
+import AdminSettings from "./features/admin/AdminSettings";
 
 
 
@@ -86,33 +89,37 @@ export default function App() {
         <Route path="/faculty" element={<FacultyLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<FacultyDashboard />} />
-           <Route path="profile" element={<FacultyProfile />} /> {/* NEW */}
-           <Route path="students" element={<FacultyMyStudents />} />
-             <Route path="my-subjects" element={<FacultyMySubjects />} />
-             <Route path="attendance" element={<FacultyAttendance />} />
-            <Route path="assignments" element={<AssignmentUpload />} />
-              
+          <Route path="profile" element={<FacultyProfile />} /> {/* NEW */}
+          <Route path="students" element={<FacultyMyStudents />} />
+          <Route path="my-subjects" element={<FacultyMySubjects />} />
+          <Route path="attendance" element={<FacultyAttendance />} />
+          <Route path="assignments" element={<AssignmentUpload />} />
+          <Route path="marks" element={<FacultyMarksEntry />} />
+          <Route path="/faculty/marks-summary" element={<FacultyMarksSummary />} />
+
+
           {/* add more faculty pages later */}
         </Route>
 
         {/* ================= ADMIN ================= */}
         <Route path="/admin" element={<AdminLayout />}>
-        <Route path="profile" element={<AdminProfile />} /> 
+          <Route path="profile" element={<AdminProfile />} />
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<AdminDashboard />} />
-           <Route path="create-faculty" element={<CreateFaculty />} />
-           <Route path="faculty" element={<AdminFaculty />} />
-  <Route path="faculty/:facultyId" element={<AdminFacultyProfile />} />
-            <Route path="students" element={<AdminStudents />} />
-  <Route path="students/:studentId" element={<AdminStudentProfile />} />
-  <Route path="courses" element={<AdminCourses />} />
-<Route path="courses/create" element={<CreateCourse />} />
+          <Route path="create-faculty" element={<CreateFaculty />} />
+          <Route path="faculty" element={<AdminFaculty />} />
+          <Route path="faculty/:facultyId" element={<AdminFacultyProfile />} />
+          <Route path="students" element={<AdminStudents />} />
+          <Route path="students/:studentId" element={<AdminStudentProfile />} />
+          <Route path="courses" element={<AdminCourses />} />
+          <Route path="courses/create" element={<CreateCourse />} />
 
-<Route path="courses/:courseId/edit" element={<EditCourse />} />
-<Route path="departments" element={<AdminDepartments />} />
-<Route path="departments/create" element={<CreateDepartment />} />
-<Route path="departments/:departmentId/edit" element={<EditDepartment />} />
- <Route path="attendance" element={<AdminAttendance />} />
+          <Route path="courses/:courseId/edit" element={<EditCourse />} />
+          <Route path="departments" element={<AdminDepartments />} />
+          <Route path="departments/create" element={<CreateDepartment />} />
+          <Route path="departments/:departmentId/edit" element={<EditDepartment />} />
+          <Route path="attendance" element={<AdminAttendance />} />
+          <Route path="settings" element={<AdminSettings />} />
 
 
 

@@ -1,5 +1,5 @@
 // src/auth/api.js
-import { getToken } from './storage';
+import { getToken, clearToken, clearUser } from './storage';
 const BASE = import.meta.env.VITE_API_BASE_URL;
 
 async function request(path, options = {}) {
@@ -13,6 +13,14 @@ async function request(path, options = {}) {
   if (!res.ok) {
     const err = new Error(data?.message || `HTTP ${res.status}`);
     err.status = res.status;
+    // Handle 401 Unauthorized - clear token and redirect to login
+    if (res.status === 401 && !path.includes('/auth/login') && !path.includes('/auth/signup')) {
+      clearToken();
+      clearUser();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
     throw err;
   }
   return data;
@@ -36,6 +44,14 @@ async function requestForm(path, formData, options = {}) {
   if (!res.ok) {
     const err = new Error(data?.message || `HTTP ${res.status}`);
     err.status = res.status;
+    // Handle 401 Unauthorized - clear token and redirect to login
+    if (res.status === 401 && !path.includes('/auth/login') && !path.includes('/auth/signup')) {
+      clearToken();
+      clearUser();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
     throw err;
   }
   return data;
@@ -44,7 +60,11 @@ async function requestForm(path, formData, options = {}) {
 export const api = {
   signup:     (body) => request('/auth/signup', { method: 'POST', body: JSON.stringify(body) }),
   login:      (body) => request('/auth/login',  { method: 'POST', body: JSON.stringify(body) }),
-  me:         ()    => request('/auth/refresh', { method: 'POST' }),
+  me:         ()    => {
+    const token = getToken();
+    if (!token) return Promise.reject(new Error('No token found'));
+    return request('/auth/refresh', { method: 'POST' });
+  },
 
   studentData: ()   => request('/dashboard/student-data'),
   facultyData: ()   => request('/dashboard/faculty-data'),
@@ -152,8 +172,15 @@ facultyDayStatus: (params) =>
   request(`/faculty/attendance/day-status${toQS(params)}`, { method: 'GET' }),
 
 // Faculty: list submissions for an assignment
+// Faculty marks management
+facultyMarksGet: (courseId) =>
+  request(`/faculty/marks/${encodeURIComponent(courseId)}`, { method: 'GET' }),
 
+facultyMarksSave: (payload) =>
+  request('/faculty/marks', { method: 'POST', body: JSON.stringify(payload) }),
 
+facultyDeleteMarks: (courseId, studentId) =>
+  request(`/faculty/marks/${encodeURIComponent(courseId)}/${encodeURIComponent(studentId)}`, { method: 'DELETE' }),
 
   // Admin Faculty
   adminCreateFaculty: (body) =>
@@ -237,7 +264,27 @@ studentSubmitAssignment: (assignmentId, payload = {}, files = []) => {
   });
 },
 
+// Admin settings API (implement server routes to persist)
+adminGetSettings: () => request('/admin/settings', { method: 'GET' }),
+adminSaveSettings: (body) =>
+  request('/admin/settings', { method: 'PUT', body: JSON.stringify(body) }),
+
+adminUpdateProfile: (body) =>
+  request('/admin/profile', { method: 'PUT', body: JSON.stringify(body) }),
+adminChangePassword: (body) =>
+  request('/admin/change-password', { method: 'POST', body: JSON.stringify(body) }),
+
+// Sessions
+adminListSessions: () => request('/admin/sessions', { method: 'GET' }),
+adminRevokeSession: (sessionId) =>
+  request(`/admin/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }),
+
 // Get my submission for an assignment
 studentMySubmission: (assignmentId) =>
   request(`/student/assignments/${encodeURIComponent(assignmentId)}/submissions/me`, { method: 'GET' }),
+
+// Student AI Assistant
+studentAiChat: (message) =>
+  request('/student/ai/chat', { method: 'POST', body: JSON.stringify({ message }) }),
 };
+

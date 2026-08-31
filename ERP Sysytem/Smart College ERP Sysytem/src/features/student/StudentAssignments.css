@@ -364,7 +364,8 @@ textarea {
   justify-content: center;
 }
 
-.close-btn {
+.modal-header .close-btn,
+.modal-card .close-btn {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -381,7 +382,8 @@ textarea {
   transition: background 0.2s ease, transform 0.15s ease;
 }
 
-.close-btn:hover {
+.modal-header .close-btn:hover,
+.modal-card .close-btn:hover {
   background: rgba(239,68,68,0.2);
   color: #fecaca;
   transform: scale(1.05);

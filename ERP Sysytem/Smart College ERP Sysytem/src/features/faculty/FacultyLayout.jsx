@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearToken } from "../../auth/storage";
-import { 
+import {
   FaHome,
   FaUser,
   FaBook,
@@ -10,8 +10,9 @@ import {
   FaChartBar,
   FaTasks,
   FaCog,
+  FaBell,
   FaUsers,
- FaSignOutAlt,
+  FaSignOutAlt,
 } from "react-icons/fa";
 import { api } from "../../auth/api";
 import "../student/StudentDashboard.css";
@@ -46,7 +47,7 @@ export default function FacultyLayout() {
       try {
         const me = await api.me();
         if (me?.user) setUserState(me.user);
-      } catch {}
+      } catch { }
     })();
   }, []);
 
@@ -61,7 +62,7 @@ export default function FacultyLayout() {
           setPhotoUrl(bust);
           localStorage.setItem("faculty_photo_url", bust);
         }
-      } catch {}
+      } catch { }
     })();
   }, []);
 
@@ -89,52 +90,55 @@ export default function FacultyLayout() {
           <span>Faculty Panel</span>
         </div>
 
-       <nav className="sidebar-nav">
-  <NavLink to="/faculty/dashboard" className="nav-item">
-    <FaHome className="nav-icon" />
-    <span>Dashboard</span>
-  </NavLink>
+        <nav className="sidebar-nav">
+          <NavLink to="/faculty/dashboard" className="nav-item">
+            <FaHome className="nav-icon" />
+            <span>Dashboard</span>
+          </NavLink>
 
-  <NavLink to="/faculty/profile" className="nav-item">
-    <FaUser className="nav-icon" />
-    <span>My Profile</span>
-  </NavLink>
+          <NavLink to="/faculty/profile" className="nav-item">
+            <FaUser className="nav-icon" />
+            <span>My Profile</span>
+          </NavLink>
 
-  <NavLink to="/faculty/my-subjects" className="nav-item">
-    <FaBook className="nav-icon" />
-    <span>My Subjects</span>
-  </NavLink>
+          <NavLink to="/faculty/my-subjects" className="nav-item">
+            <FaBook className="nav-icon" />
+            <span>My Subjects</span>
+          </NavLink>
 
-  <NavLink to="/faculty/students" className="nav-item">
-    <FaUsers className="nav-icon" />
-    <span>My Students</span>
-  </NavLink>
+          <NavLink to="/faculty/students" className="nav-item">
+            <FaUsers className="nav-icon" />
+            <span>My Students</span>
+          </NavLink>
 
-  <NavLink to="/faculty/attendance" className="nav-item">
-    <FaCalendarCheck className="nav-icon" />
-    <span>Attendance</span>
-  </NavLink>
+          <NavLink to="/faculty/attendance" className="nav-item">
+            <FaCalendarCheck className="nav-icon" />
+            <span>Attendance</span>
+          </NavLink>
 
-  <NavLink to="/faculty/marks" className="nav-item">
-    <FaChartBar className="nav-icon" />
-    <span>Marks</span>
-  </NavLink>
+          <NavLink to="/faculty/marks" className="nav-item">
+            <FaChartBar className="nav-icon" />
+            <span>Marks</span>
+          </NavLink>
+          <NavLink to="/faculty/marks-summary" className="nav-item">
+            <FaChartBar className="nav-icon" /> <span> Marks Summary </span>
+          </NavLink>
 
-  <NavLink to="/faculty/assignments" className="nav-item">
-    <FaTasks className="nav-icon" />
-    <span>Assignments</span>
-  </NavLink>
+          <NavLink to="/faculty/assignments" className="nav-item">
+            <FaTasks className="nav-icon" />
+            <span>Assignments</span>
+          </NavLink>
 
-  <NavLink to="/faculty/settings" className="nav-item">
-    <FaCog className="nav-icon" />
-    <span>Settings</span>
-  </NavLink>
-</nav>
+          <NavLink to="/faculty/settings" className="nav-item">
+            <FaCog className="nav-icon" />
+            <span>Settings</span>
+          </NavLink>
+        </nav>
 
-         <button className="btn logout full" onClick={handleLogout}>
-                  <FaSignOutAlt />
-                  <span>Logout</span>
-                </button>
+        <button className="btn logout full" onClick={handleLogout}>
+          <FaSignOutAlt />
+          <span>Logout</span>
+        </button>
       </aside>
 
       <main className="main">
@@ -150,10 +154,10 @@ export default function FacultyLayout() {
           </div>
 
           <div className="header-right">
-            <div className="notification">
-              🔔
+            <NavLink to="/faculty/notifications" className="notification" title="Notifications">
+              <FaBell className="nav-icon" />
               {notices.length > 0 && <span className="badge">{notices.length}</span>}
-            </div>
+            </NavLink>
 
             <div
               className="header-profile clickable"

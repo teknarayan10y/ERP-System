@@ -22,10 +22,10 @@ const studentAttendanceRoutes = require('./routes/studentAttendanceRoutes');
 const facultyAnalyticsRoutes = require('./routes/facultyAnalyticsRoutes');
 const facultyAssignmentRoutes = require('./routes/assignmentRoutes');
 const facultySubmissionRoutes = require('./routes/facultySubmissionRoutes');
+const facultyMarksRoutes = require('./routes/facultyMarksRoutes');
 const studentAssignmentRoutes = require('./routes/studentAssignmentRoutes');
 const studentSubmissionRoutes = require('./routes/studentSubmissionRoutes');
-
-// ADD THESE TWO LINES
+const studentAiRoutes = require('./routes/studentAiRoutes');
 
 
 const mongoose = require('mongoose');
@@ -51,7 +51,9 @@ app.use('/api/faculty/assignments', facultyAssignmentRoutes);
 
 app.use(express.json());
 
-// ONE-TIME INDEX FIX/SYNC ON START
+const { seedKnowledgeBase } = require('./services/ragService');
+
+// ONE-TIME INDEX FIX/SYNC & RAG SEEDING ON START
 mongoose.connection.once('open', async () => {
   try {
     await Attendance.collection.dropIndex('course_1_date_1').catch(() => {});
@@ -59,6 +61,13 @@ mongoose.connection.once('open', async () => {
     console.log('[Attendance] indexes synced');
   } catch (e) {
     console.error('[Attendance] index sync error:', e && e.message ? e.message : e);
+  }
+
+  // Seed Knowledge Base for Vector RAG
+  try {
+    await seedKnowledgeBase();
+  } catch (e) {
+    console.error('[RAG] seed error:', e && e.message ? e.message : e);
   }
 });
 
@@ -73,11 +82,13 @@ app.use('/api/admin/faculty', adminFacultyRoutes);
 app.use('/api/admin/courses', adminCourseRoutes);
 app.use('/api/faculty', facultyCourseRoutes);
 app.use('/api/faculty/attendance', facultyAttendanceRoutes);
+app.use('/api/faculty', facultyMarksRoutes);
 app.use('/api/admin/departments', adminDepartmentRoutes);
 app.use('/api/admin/attendance', adminAttendanceRoutes);
 app.use('/api/student/attendance', studentAttendanceRoutes);
 app.use('/api/student/assignments', studentAssignmentRoutes);
 app.use('/api/student/assignments', studentSubmissionRoutes);
+app.use('/api/student/ai', studentAiRoutes);
 
 
 app.use('/api/faculty/analytics', facultyAnalyticsRoutes);

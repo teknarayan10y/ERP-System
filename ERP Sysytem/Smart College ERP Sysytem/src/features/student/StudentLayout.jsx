@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearToken, clearUser, getUser, setUser } from "../../auth/storage";
 import { api } from "../../auth/api";
+import StudentAiChat from "./StudentAiChat";
 import "./StudentDashboard.css";
 
 /* ICONS */
@@ -17,6 +18,7 @@ import {
   FaMoneyBill,
   FaQuestionCircle,
   FaCog,
+  FaBell,
   FaSignOutAlt,
 } from "react-icons/fa";
 
@@ -186,10 +188,10 @@ export default function StudentLayout() {
           </div>
 
           <div className="header-right">
-            <div className="notification">
-              🔔
+            <NavLink to="/student/notifications" className="notification" title="Notifications">
+              <FaBell className="nav-icon" />
               {notices.length > 0 && <span className="badge">{notices.length}</span>}
-            </div>
+            </NavLink>
 
             <div
               className="header-profile clickable"
@@ -214,6 +216,9 @@ export default function StudentLayout() {
         <div className="container">
           <Outlet />
         </div>
+
+        {/* STUDENT AI ASSISTANT WIDGET */}
+        <StudentAiChat />
       </main>
     </div>
   );

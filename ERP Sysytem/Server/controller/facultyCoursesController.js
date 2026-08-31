@@ -9,11 +9,23 @@ async function facultyMyCourses(req, res) {
     if (!facultyId) return res.status(401).json({ message: 'Unauthorized' });
 
     const rows = await Course.find({ faculty: facultyId })
-  .select('code name department semester credits isActive section')
-  .sort({ semester: 1, code: 1 })
-  .lean();
+      .select('code name department semester credits isActive section')
+      .sort({ semester: 1, code: 1 })
+      .lean();
 
-    return res.json({ courses: rows });
+    console.log('Found courses for faculty:', facultyId, rows);
+
+    // Add missing fields with default values
+   const processedRows = rows.map(course => ({
+  ...course,
+  code: course.code || course.name?.replace(/\s+/g, '').substring(0, 6).toUpperCase() + (course.semester || 1) + '01',
+  credits: course.credits || 4
+}));
+
+    console.log('Processed courses with defaults:', processedRows);
+    console.log('Response being sent:', { courses: processedRows });
+
+    return res.json({ courses: processedRows });
   } catch (e) {
     console.error('facultyMyCourses error:', e);
     return res.status(500).json({ message: 'Failed to load courses' });
