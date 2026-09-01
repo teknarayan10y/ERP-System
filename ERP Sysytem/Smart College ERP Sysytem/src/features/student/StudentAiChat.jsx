@@ -17,7 +17,12 @@ import {
   FaGraduationCap,
   FaCalendarCheck,
   FaFileAlt,
-  FaExternalLinkAlt
+  FaExternalLinkAlt,
+  FaMicrophone,
+  FaMicrophoneSlash,
+  FaVolumeUp,
+  FaVolumeMute,
+  FaStop
 } from 'react-icons/fa';
 import './StudentAiChat.css';
 
@@ -30,7 +35,8 @@ const CATEGORIES = [
 ];
 
 const ALL_QUICK_CHIPS = [
-  { cat: 'attendance', label: '📊 Attendance & Safe Classes', query: 'What is my current attendance and how many classes can I safely miss?' },
+  { cat: 'attendance', label: '📊 Attendance Percentage', query: 'What is my attendance percentage?' },
+  { cat: 'attendance', label: '💡 Safe Classes Margin', query: 'How many classes can I safely miss?' },
   { cat: 'attendance', label: '🚨 Classes Needed for 75%', query: 'How many classes do I need to attend to reach 75% attendance?' },
   { cat: 'regulations', label: '📜 Condonation & Shortage Rules', query: 'What are the college rules for attendance shortage and condonation?' },
   { cat: 'academics', label: '📝 Subject-wise Marks & Grades', query: 'Show my course marks and grades breakdown' },
@@ -45,10 +51,25 @@ const ALL_QUICK_CHIPS = [
 const INITIAL_MESSAGE = {
   id: 'init-msg',
   sender: 'ai',
-  text: `👋 **Welcome to Student AI!**\n\nI am your **AI Academic Co-Pilot**, connected in real-time to your Student Portal. Ask me anything about your portal!`,
+  text: `👋 **Welcome to Student AI!**\n\nI am your **AI Academic Co-Pilot**, connected in real-time to your Student Portal. Ask me anything by typing or speaking through your microphone!`,
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   sources: []
 };
+
+/**
+ * Utility to strip markdown and emojis for clean, natural speech synthesis
+ */
+function cleanTextForSpeech(rawText) {
+  if (!rawText) return '';
+  return rawText
+    .replace(/!\[.*?\]\(.*?\)/g, '') // remove images
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links to label
+    .replace(/[#*_`~>]/g, '') // markdown tokens
+    .replace(/[-•]/g, ' ') // bullet points to pauses
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '') // emojis
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export default function StudentAiChat() {
   const [isOpen, setIsOpen] = useState(false);
@@ -60,8 +81,17 @@ export default function StudentAiChat() {
   const [copiedId, setCopiedId] = useState(null);
   const [showWelcomeTooltip, setShowWelcomeTooltip] = useState(true);
 
+  // VOICE ASSISTANT STATES
+  const [isVoiceMode, setIsVoiceMode] = useState(
+    localStorage.getItem('student_ai_voice_mode') === 'true'
+  );
+  const [isListening, setIsListening] = useState(false);
+  const [speakingMsgId, setSpeakingMsgId] = useState(null);
+  const [voiceNotice, setVoiceNotice] = useState('');
+
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -81,7 +111,191 @@ export default function StudentAiChat() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Cleanup speech synthesis on unmount
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Prime speech synthesis voices on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+  }, []);
+
+  // Toggle Voice Mode (auto speak answers)
+  const toggleVoiceMode = () => {
+    const nextVal = !isVoiceMode;
+    setIsVoiceMode(nextVal);
+    localStorage.setItem('student_ai_voice_mode', String(nextVal));
+
+    if (!nextVal && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+    }
+  };
+
+/**
+ * Dedicated selector to find the highest-quality female voice
+ */
+function getFemaleVoice(voices) {
+  if (!voices || voices.length === 0) return null;
+
+  const femaleKeywords = [
+    'natural (female)',
+    'aria',
+    'jenny',
+    'zira',
+    'samantha',
+    'victoria',
+    'karen',
+    'moira',
+    'tessa',
+    'susan',
+    'hazel',
+    'heera',
+    'veena',
+    'neerja',
+    'google uk english female',
+    'google us english female',
+    'female'
+  ];
+
+  // 1. Search for preferred English female voices
+  for (const kw of femaleKeywords) {
+    const match = voices.find(
+      (v) => v.lang.startsWith('en') && v.name.toLowerCase().includes(kw)
+    );
+    if (match) return match;
+  }
+
+  // 2. Fallback: Any English voice that does NOT contain male names
+  const maleNames = ['david', 'george', 'mark', 'richard', 'james', 'male', 'guy', 'ravi', 'stefan'];
+  const nonMale = voices.find(
+    (v) => v.lang.startsWith('en') && !maleNames.some((m) => v.name.toLowerCase().includes(m))
+  );
+  if (nonMale) return nonMale;
+
+  return voices.find((v) => v.lang.startsWith('en')) || voices[0] || null;
+}
+
+  // Text-To-Speech function with natural Female Voice
+  const speakMessage = (text, id) => {
+    if (!('speechSynthesis' in window)) {
+      return;
+    }
+
+    if (speakingMsgId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const clean = cleanTextForSpeech(text);
+    if (!clean) return;
+
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.06; // Pleasant, natural female pitch
+
+    // Set dedicated female voice
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = getFemaleVoice(voices);
+    if (femaleVoice) {
+      utterance.voice = femaleVoice;
+    }
+
+    utterance.onstart = () => setSpeakingMsgId(id);
+    utterance.onend = () => setSpeakingMsgId(null);
+    utterance.onerror = () => setSpeakingMsgId(null);
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Speech-To-Text (Voice Input) with Auto-Send
+  const toggleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice recognition is not supported in this browser. Please use Google Chrome, Edge, or Safari.');
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      setVoiceNotice('');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      let finalCapturedText = '';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setVoiceNotice('🎙️ Listening... Speak your question now');
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (transcript) {
+          finalCapturedText = transcript;
+          setInput(transcript);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        setVoiceNotice(event.error === 'not-allowed' ? '⚠️ Microphone permission denied' : 'Speech error');
+        setTimeout(() => setVoiceNotice(''), 3500);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setVoiceNotice('');
+
+        // AUTO-SEND if speech was captured
+        if (finalCapturedText && finalCapturedText.trim()) {
+          const textToSend = finalCapturedText.trim();
+          setInput('');
+          handleSend(textToSend);
+        } else {
+          setTimeout(() => textareaRef.current?.focus(), 100);
+        }
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start speech recognition:', err);
+      setIsListening(false);
+    }
+  };
+
   const handleRefresh = () => {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    setSpeakingMsgId(null);
     setMessages([
       {
         ...INITIAL_MESSAGE,
@@ -102,6 +316,9 @@ export default function StudentAiChat() {
     const textToSend = queryText || input;
     if (!textToSend.trim() || loading) return;
 
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    setSpeakingMsgId(null);
+
     const userMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
@@ -117,17 +334,23 @@ export default function StudentAiChat() {
       const res = await api.studentAiChat(textToSend.trim());
       const aiReply = res?.reply || 'Sorry, I could not process your query at this moment.';
       const sources = res?.sources || [];
+      const aiMsgId = `ai-${Date.now()}`;
 
       setMessages((prev) => [
         ...prev,
         {
-          id: `ai-${Date.now()}`,
+          id: aiMsgId,
           sender: 'ai',
           text: aiReply,
           sources,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
+
+      // If voice mode is active, auto-speak the answer
+      if (isVoiceMode) {
+        setTimeout(() => speakMessage(aiReply, aiMsgId), 300);
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -161,10 +384,7 @@ export default function StudentAiChat() {
     const lines = content.split('\n');
 
     return lines.map((line, lIdx) => {
-      // Check if line is a bullet point
       const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-') || /^\d+\./.test(line.trim());
-
-      // Parse markdown images, links, raw URLs, and bold tokens
       const parts = line.split(/(!\[.*?\]\([^\s\)]+\)|\[.*?\]\([^\s\)]+\)|https?:\/\/[^\s\)]+|\*\*.*?\*\*)/g);
 
       const formattedLine = parts.map((part, pIdx) => {
@@ -200,8 +420,8 @@ export default function StudentAiChat() {
           );
         }
 
-        // Raw URLs
-        if (/^https?:\/\/[^\s\)]+$/.test(part)) {
+        // Raw HTTP URL
+        if (/^https?:\/\/[^\s]+$/.test(part)) {
           return (
             <a
               key={pIdx}
@@ -216,12 +436,17 @@ export default function StudentAiChat() {
           );
         }
 
-        // Bold text **bold**
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={pIdx} className="modern-highlight-text">{part.slice(2, -2)}</strong>;
+        // Bold text **text**
+        const boldMatch = part.match(/^\*\*(.*?)\*\*$/);
+        if (boldMatch) {
+          return (
+            <strong key={pIdx} className="modern-highlight-text">
+              {boldMatch[1]}
+            </strong>
+          );
         }
 
-        return part;
+        return <span key={pIdx}>{part}</span>;
       });
 
       return (
@@ -233,19 +458,22 @@ export default function StudentAiChat() {
   };
 
   return (
-    <div className={`student-ai-modern-root ${windowMode}`}>
+    <div className="student-ai-modern-root">
       {/* FLOATING TRIGGER LAUNCHER */}
       {!isOpen && (
         <div className="modern-launcher-wrapper">
           {showWelcomeTooltip && (
             <div className="modern-launcher-tooltip" onClick={() => setIsOpen(true)}>
               <span className="tooltip-sparkle">✨</span>
-              <span>Ask <strong>Student AI</strong> about your attendance & grades</span>
+              <span>Ask Student AI by text or voice!</span>
               <button
                 className="tooltip-close"
-                onClick={(e) => { e.stopPropagation(); setShowWelcomeTooltip(false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowWelcomeTooltip(false);
+                }}
               >
-                <FaTimes />
+                ✕
               </button>
             </div>
           )}
@@ -253,17 +481,17 @@ export default function StudentAiChat() {
           <button
             className="modern-ai-trigger"
             onClick={() => setIsOpen(true)}
-            title="Launch Student AI"
+            aria-label="Open Student AI Assistant"
           >
             <div className="trigger-aura-glow"></div>
             <div className="trigger-icon-orb">
-              <FaRobot className="trigger-robot-icon" />
+              <FaRobot />
             </div>
             <div className="trigger-content">
               <span className="trigger-title">Student AI</span>
-              <span className="trigger-sub">Smart Assistant</span>
+              <span className="trigger-sub">Voice & Chat Assistant</span>
             </div>
-            <span className="trigger-live-indicator"></span>
+            <div className="trigger-live-indicator"></div>
           </button>
         </div>
       )}
@@ -291,6 +519,15 @@ export default function StudentAiChat() {
             </div>
 
             <div className="header-actions">
+              {/* Voice Mode Toggle Button (Voice vs Text-Only) */}
+              <button
+                className={`ai-header-btn ai-voice-toggle-btn ${isVoiceMode ? 'is-voice-on' : ''}`}
+                onClick={toggleVoiceMode}
+                title={isVoiceMode ? 'Voice Answers: ON (AI will speak answers aloud)' : 'Voice Answers: OFF (Text only responses)'}
+              >
+                {isVoiceMode ? <FaVolumeUp /> : <FaVolumeMute />}
+              </button>
+
               {/* Window Expand Toggle */}
               <button
                 className="ai-header-btn ai-expand-btn"
@@ -303,7 +540,11 @@ export default function StudentAiChat() {
               {/* Close Button */}
               <button
                 className="ai-header-btn ai-close-btn"
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  if (window.speechSynthesis) window.speechSynthesis.cancel();
+                  setSpeakingMsgId(null);
+                  setIsOpen(false);
+                }}
                 title="Close Window"
               >
                 <FaTimes />
@@ -373,28 +614,50 @@ export default function StudentAiChat() {
                     </div>
                   )}
 
-                  {/* Bubble Footer with Copy Button & Timestamp */}
+                  {/* Bubble Footer with Listen & Copy Buttons */}
                   <div className="modern-msg-footer">
                     <span className="msg-time">{msg.timestamp}</span>
 
                     {msg.sender === 'ai' && (
-                      <button
-                        className="copy-msg-btn"
-                        onClick={() => handleCopyMessage(msg.text, msg.id)}
-                        title="Copy message to clipboard"
-                      >
-                        {copiedId === msg.id ? (
-                          <>
-                            <FaCheck className="copy-icon copied" />
-                            <span className="copied-text">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <FaCopy className="copy-icon" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="msg-footer-actions">
+                        {/* Read Aloud Button */}
+                        <button
+                          className={`read-aloud-btn ${speakingMsgId === msg.id ? 'is-speaking' : ''}`}
+                          onClick={() => speakMessage(msg.text, msg.id)}
+                          title={speakingMsgId === msg.id ? 'Stop Speaking' : 'Read Aloud'}
+                        >
+                          {speakingMsgId === msg.id ? (
+                            <>
+                              <FaStop className="speak-icon stop-icon" />
+                              <span>Stop</span>
+                            </>
+                          ) : (
+                            <>
+                              <FaVolumeUp className="speak-icon" />
+                              <span>Listen</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Copy Button */}
+                        <button
+                          className="copy-msg-btn"
+                          onClick={() => handleCopyMessage(msg.text, msg.id)}
+                          title="Copy message to clipboard"
+                        >
+                          {copiedId === msg.id ? (
+                            <>
+                              <FaCheck className="copy-icon copied" />
+                              <span className="copied-text">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <FaCopy className="copy-icon" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -422,8 +685,15 @@ export default function StudentAiChat() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* FLOATING MODERN INPUT CONTAINER */}
+          {/* FLOATING MODERN INPUT CONTAINER WITH MICROPHONE & REFRESH */}
           <footer className="modern-input-wrapper">
+            {voiceNotice && (
+              <div className="voice-listening-banner">
+                <span className="pulse-mic-dot"></span>
+                <span>{voiceNotice}</span>
+              </div>
+            )}
+
             <div className="modern-input-card">
               <button
                 className="modern-refresh-input-btn"
@@ -437,7 +707,7 @@ export default function StudentAiChat() {
               <textarea
                 ref={textareaRef}
                 className="modern-textarea"
-                placeholder="Ask StudentAI anything about your portal"
+                placeholder={isListening ? "Listening... Speak your question" : "Ask StudentAI anything by text or click mic to speak"}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -446,6 +716,17 @@ export default function StudentAiChat() {
               />
 
               <div className="input-right-actions">
+                {/* Voice Input Mic Button */}
+                <button
+                  className={`modern-mic-btn ${isListening ? 'listening' : ''}`}
+                  onClick={toggleVoiceInput}
+                  disabled={loading}
+                  title={isListening ? "Listening... Click to stop" : "Speak your question (Microphone)"}
+                >
+                  {isListening ? <FaMicrophoneSlash /> : <FaMicrophone />}
+                </button>
+
+                {/* Send Button */}
                 <button
                   className={`modern-send-btn ${input.trim() && !loading ? 'can-send' : ''}`}
                   onClick={() => handleSend()}
@@ -458,7 +739,7 @@ export default function StudentAiChat() {
             </div>
 
             <div className="input-footer-hint">
-              <span>Press <strong>Enter ↵</strong> to send, <strong>Shift + Enter</strong> for new line</span>
+              <span>{isVoiceMode ? '🔊 Voice Mode ON (AI speaks responses)' : '🔇 Text Only Mode'} • Press <strong>Enter ↵</strong> to send</span>
             </div>
           </footer>
         </div>

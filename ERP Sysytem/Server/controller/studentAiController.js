@@ -10,7 +10,7 @@ const User = require('../models/User');
 const { searchKnowledgeBase } = require('../services/ragService');
 
 /**
- * Helper to ensure URLs are properly formatted with http/https prefix
+ * Helper to ensure URLs are properly formatted
  */
 function formatUrl(url) {
   if (!url || typeof url !== 'string') return null;
@@ -39,7 +39,7 @@ function formatUploadUrl(pathOrUrl) {
 async function getStudentContext(userId) {
   const userObjId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
 
-  // 1. Fetch User and Student Profile first
+  // 1. Fetch User and Student Profile
   const [user, profile] = await Promise.all([
     User.findById(userObjId).select('name email role').lean(),
     StudentProfile.findOne({ $or: [{ user: userObjId }, { user: String(userId) }] }).lean()
@@ -132,7 +132,6 @@ async function getStudentContext(userId) {
     const effectivePresent = present + onDuty;
     const pct = total > 0 ? Math.round((effectivePresent / total) * 10000) / 100 : 0;
 
-    // Class safety calculations
     let safeToMiss = 0;
     let neededTo75 = 0;
     if (total > 0) {
@@ -251,264 +250,97 @@ async function getStudentContext(userId) {
 }
 
 /**
- * Universal Dynamic Grounding & Hybrid Fallback Engine (Strictly Scoped to Student Portal)
+ * Concise Fallback Answer Generator (when Gemini LLM is unavailable)
  */
-function generateDataGroundedAnswer(userQuery, ctx, relevantKnowledge = []) {
+function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
   const q = (userQuery || '').toLowerCase().trim();
-  const info = ctx.studentInfo;
   const att = ctx.attendance;
-  const marks = ctx.marks;
-  const courses = ctx.courses;
-  const pending = ctx.pendingAssignments;
-  const completed = ctx.completedAssignments;
+  const info = ctx.studentInfo;
+  const marks = ctx.marks || [];
+  const pending = ctx.pendingAssignments || [];
 
-  // Check for out-of-scope administrative or unauthorized queries
-  if (
-    q.includes('admin password') ||
-    q.includes('salary') ||
-    q.includes('faculty salary') ||
-    q.includes('other student') ||
-    q.includes('all student marks') ||
-    q.includes('admin settings') ||
-    q.includes('system database')
-  ) {
+  // 1. Security Check
+  if (q.includes('password') || q.includes('salary') || q.includes('other student') || q.includes('admin settings')) {
     return "I can only access and assist with information related to your personal Student Portal and academic records.";
   }
 
-  // 1. Check if query matches an Institutional Knowledge Chunk from Vector RAG
-  const institutionalMatch = (relevantKnowledge || []).find(
-    (k) => k.similarityScore >= 0.25 || (k.title && q.includes(k.title.toLowerCase().slice(0, 10)))
-  );
-
+  // 2. Attendance Specific Single Queries
   if (
-    q.includes('condonation') ||
-    q.includes('regulat') ||
-    q.includes('policy') ||
-    q.includes('weightage') ||
-    q.includes('passing minimum') ||
-    q.includes('sgpa') ||
-    q.includes('grading scale') ||
-    q.includes('leave') ||
-    q.includes('on duty') ||
-    q.includes('od rule')
+    q.includes('percentage') ||
+    q.includes('percent') ||
+    q.includes('%') ||
+    q === 'attendance' ||
+    q === 'what is my attendance' ||
+    q === 'what is my attendance percentage' ||
+    q === 'show my attendance'
   ) {
-    if (institutionalMatch) {
-      let reply = `📜 **College Academic Regulation: ${institutionalMatch.title}**\n\n`;
-      reply += `${institutionalMatch.content}\n\n`;
-      if (q.includes('attendance') && att.totalClasses > 0) {
-        reply += `💡 *Your current live attendance is **${att.percentage}%** (${att.status}).*`;
-      }
-      return reply;
-    }
+    return `Your current attendance is **${att.percentage}%** (${att.status}).`;
   }
 
-  // 2. Enrolled Courses Query
-  if (q.includes('my course') || q.includes('my subject') || q.includes('enrolled course') || q.includes('which subject') || q.includes('classes')) {
-    if (!courses || courses.length === 0) {
-      return `No courses are currently registered for your semester (${info.semester ? `Semester ${info.semester}` : 'current semester'}) in the database.`;
+  if (q.includes('can i miss') || q.includes('safe to miss') || q.includes('bunk') || q.includes('how many class can i miss')) {
+    if (att.percentage >= 75) {
+      return `You can safely miss up to **${att.safeToMiss}** class(es) while maintaining your attendance above the 75% cutoff (Current: **${att.percentage}%**).`;
     }
-    let reply = `📚 **Your Registered Courses (Semester ${info.semester || 'Current'} - ${info.branch || 'General'}):**\n\n`;
-    courses.forEach((c, idx) => {
-      reply += `${idx + 1}. **${c.code} - ${c.name}**\n`;
-      reply += `   • Credits: ${c.credits} | Faculty: ${c.faculty}\n`;
-    });
-    return reply;
+    return `Your attendance is currently **${att.percentage}%** (Below 75%). You need to attend the next **${att.neededTo75}** consecutive classes to reach 75%.`;
   }
 
-  // 3. Total Number of Semesters Query
-  if (q.includes('total number of semester') || q.includes('total semester') || q.includes('how many semester') || q.includes('total sem')) {
-    const prog = (info.program || '').toLowerCase();
-    let totalSems = 8;
-    if (prog.includes('bca') || prog.includes('bsc') || prog.includes('bba') || prog.includes('b.sc') || prog.includes('b.c.a')) {
-      totalSems = 6;
-    } else if (prog.includes('mca') || prog.includes('mba') || prog.includes('mtech') || prog.includes('m.tech') || prog.includes('m.sc')) {
-      totalSems = 4;
-    }
-
-    let reply = `The total number of semesters for your program (**${info.program || 'Degree'}**) is **${totalSems} semesters**.`;
-    if (info.semester) {
-      reply += ` You are currently in **Semester ${info.semester}** of ${totalSems}.`;
-    }
-    return reply;
+  if (q.includes('classes attended') || q.includes('present class') || q.includes('how many present')) {
+    return `You have attended **${att.presentClasses + att.onDutyClasses}** out of **${att.totalClasses}** classes.`;
   }
 
-  // Key Aliases & Labels for Dynamic Search
-  const FIELD_MAP = [
-    { keys: ['current sem', 'current semester', 'which sem', 'which semester', 'sem', 'semester'], label: 'current semester', val: info.semester ? `Semester ${info.semester}` : null },
-    { keys: ['profile image', 'profile photo', 'profile picture', 'my photo', 'my picture', 'my avatar', 'photo', 'avatar', 'picture'], label: 'profile image', val: info.profileImage, isImage: true },
-    { keys: ['last name', 'lastname', 'surname'], label: 'last name', val: info.lastName },
-    { keys: ['first name', 'firstname'], label: 'first name', val: info.firstName },
-    { keys: ['full name', 'my name', 'name'], label: 'name', val: info.name },
-    { keys: ['gender', 'sex'], label: 'gender', val: info.gender },
-    { keys: ['dob', 'date of birth', 'birthday', 'birth date'], label: 'Date of Birth', val: info.dob },
-    { keys: ['blood group', 'bloodgroup', 'blood type', 'blood'], label: 'blood group', val: info.bloodGroup },
-    { keys: ['nationality'], label: 'nationality', val: info.nationality },
-    { keys: ['phone number', 'mobile number', 'phone', 'mobile', 'contact number'], label: 'phone number', val: info.phone },
-    { keys: ['alt phone', 'alternate phone', 'alternate number'], label: 'alternate phone', val: info.altPhone },
-    { keys: ['email address', 'email', 'mail'], label: 'email address', val: info.email },
-    { keys: ['address'], label: 'address', val: info.address },
-    { keys: ['city'], label: 'city', val: info.city },
-    { keys: ['state'], label: 'state', val: info.state },
-    { keys: ['pincode', 'zipcode', 'pin code'], label: 'pincode', val: info.pincode },
-    { keys: ['register number', 'register no', 'reg no', 'reg number'], label: 'register number', val: info.registerNumber },
-    { keys: ['roll number', 'roll no', 'rollno', 'roll'], label: 'roll number', val: info.rollNo },
-    { keys: ['student id', 'studentid'], label: 'Student ID', val: info.studentId },
-    { keys: ['program', 'branch', 'degree', 'department'], label: 'program/branch', val: info.program },
-    { keys: ['section'], label: 'section', val: info.section },
-    { keys: ['academic year', 'year'], label: 'academic year', val: info.year },
-    { keys: ['admission year'], label: 'admission year', val: info.admissionYear },
-    { keys: ['passout year', 'passing year', 'graduation year'], label: 'expected passout year', val: info.passoutYear },
-    { keys: ['cgpa', 'gpa'], label: 'overall CGPA', val: info.cgpa },
-    { keys: ['github'], label: 'GitHub profile link', val: info.github, isUrl: true },
-    { keys: ['linkedin'], label: 'LinkedIn profile link', val: info.linkedin, isUrl: true },
-    { keys: ['portfolio'], label: 'portfolio link', val: info.portfolio, isUrl: true },
-    { keys: ['leetcode'], label: 'LeetCode link', val: info.leetcode, isUrl: true },
-    { keys: ['hackerrank'], label: 'HackerRank link', val: info.hackerrank, isUrl: true },
-    { keys: ['codechef'], label: 'CodeChef link', val: info.codechef, isUrl: true },
-    { keys: ['codeforces'], label: 'Codeforces link', val: info.codeforces, isUrl: true },
-    { keys: ['kaggle'], label: 'Kaggle link', val: info.kaggle, isUrl: true },
-    { keys: ['resume'], label: 'Resume link', val: info.resumeLink, isUrl: true },
-    { keys: ['aadhaar', 'aadhar'], label: 'Aadhaar number', val: info.aadhaar },
-    { keys: ['hobbies', 'hobby'], label: 'hobbies', val: info.hobbies },
-    { keys: ['achievements', 'achievement'], label: 'achievements', val: info.achievements },
-    { keys: ['remarks', 'remark'], label: 'remarks', val: info.remarks }
+  if (q.includes('absent class') || q.includes('how many absent') || q.includes('missed class')) {
+    return `You have been absent for **${att.absentClasses}** out of **${att.totalClasses}** classes.`;
+  }
+
+  if (q.includes('total class') || q.includes('conducted class')) {
+    return `A total of **${att.totalClasses}** classes have been conducted so far.`;
+  }
+
+  // 3. Single Profile Field Queries (ONLY return that specific detail)
+  const singleFieldMap = [
+    { keys: ['cgpa', 'gpa', 'my cgpa'], answer: `Your current CGPA is **${info.cgpa || 'N/A'}**.` },
+    { keys: ['roll no', 'roll number', 'rollno', 'roll'], answer: `Your Roll Number is **${info.rollNo || 'N/A'}**.` },
+    { keys: ['student id', 'studentid'], answer: `Your Student ID is **${info.studentId || 'N/A'}**.` },
+    { keys: ['register no', 'register number', 'reg no'], answer: `Your Register Number is **${info.registerNumber || 'N/A'}**.` },
+    { keys: ['email', 'mail', 'email address'], answer: `Your registered email is **${info.email || 'N/A'}**.` },
+    { keys: ['phone', 'mobile', 'contact number', 'phone number'], answer: `Your phone number is **${info.phone || 'N/A'}**.` },
+    { keys: ['blood group', 'bloodgroup', 'blood type'], answer: `Your blood group is **${info.bloodGroup || 'N/A'}**.` },
+    { keys: ['dob', 'date of birth', 'birthday', 'birth date'], answer: `Your Date of Birth is **${info.dob || 'N/A'}**.` },
+    { keys: ['address', 'city', 'state', 'pincode'], answer: `Your address is **${info.address || 'N/A'}**, ${info.city || ''}, ${info.state || ''} ${info.pincode || ''}.` },
+    { keys: ['branch', 'department', 'program', 'degree'], answer: `Your branch/program is **${info.program || info.branch || 'N/A'}**.` },
+    { keys: ['current sem', 'which sem', 'current semester', 'semester', 'sem'], answer: `You are currently in **Semester ${info.semester || 'N/A'}**.` },
+    { keys: ['academic year', 'year'], answer: `Your academic year is **${info.year || 'N/A'}**.` },
+    { keys: ['section'], answer: `Your section is **${info.section || 'N/A'}**.` },
+    { keys: ['photo', 'profile photo', 'avatar', 'picture'], answer: info.profileImage ? `Here is your profile photo:\n\n![Profile Photo](${info.profileImage})` : `No profile photo uploaded.` },
+    { keys: ['github'], answer: info.github ? `Your GitHub link is [${info.github}](${info.github}).` : `GitHub link not specified.` },
+    { keys: ['linkedin'], answer: info.linkedin ? `Your LinkedIn link is [${info.linkedin}](${info.linkedin}).` : `LinkedIn link not specified.` },
+    { keys: ['leetcode'], answer: info.leetcode ? `Your LeetCode link is [${info.leetcode}](${info.leetcode}).` : `LeetCode link not specified.` },
+    { keys: ['resume'], answer: info.resumeLink ? `Your Resume link is [${info.resumeLink}](${info.resumeLink}).` : `Resume link not specified.` },
+    { keys: ['full name', 'my name', 'name'], answer: `Your name is **${info.name || 'N/A'}**.` },
+    { keys: ['pending assignment', 'assignments pending', 'due assignment'], answer: pending.length > 0 ? `You have **${pending.length}** pending assignment(s).` : `You have **0** pending assignments!` }
   ];
 
-  // Check for Single Specific Field Match
-  for (const field of FIELD_MAP) {
-    if (field.keys.some(k => q.includes(k))) {
-      if (!q.includes('mark') && !q.includes('attendance') && !q.includes('all') && !q.includes('summary') && !q.includes('detail')) {
-        if (field.val && field.val !== 'Not specified') {
-          if (field.isImage) {
-            return `Here is your profile photo:\n\n![Profile Photo](${field.val})\n\n[Open Full Image](${field.val})`;
-          }
-          if (field.isUrl) {
-            return `Your ${field.label} is [${field.val}](${field.val}).`;
-          }
-          return field.label === 'current semester' ? `You are currently in **${field.val}**.` : `Your ${field.label} is **${field.val}**.`;
-        } else {
-          return `That data is not present in your database records.`;
-        }
+  if (!q.includes('all') && !q.includes('summary') && !q.includes('report') && !q.includes('breakdown') && !q.includes('everything')) {
+    for (const item of singleFieldMap) {
+      if (item.keys.some(k => q.includes(k))) {
+        return item.answer;
       }
     }
   }
 
-  // 4. Attendance & Bunking Queries
-  if (q.includes('attendance') || q.includes('absent') || q.includes('present') || q.includes('miss') || q.includes('leave') || q.includes('bunk') || q.includes('cut') || q.includes('holiday')) {
-    if (att.totalClasses === 0) {
-      return `That data is not present in your database records.`;
-    }
-
-    let reply = `📊 **Attendance Summary for ${info.name || 'Student'}**\n\n`;
-    reply += `• **Total Classes Conducted:** ${att.totalClasses}\n`;
-    reply += `• **Classes Attended (Present + OD):** ${att.presentClasses + att.onDutyClasses} (${att.presentClasses} Present, ${att.onDutyClasses} On-Duty)\n`;
-    reply += `• **Classes Absent:** ${att.absentClasses}\n`;
-    reply += `• **Overall Attendance:** **${att.percentage}%** (${att.status})\n\n`;
-
-    if (att.percentage >= 75) {
-      if (att.safeToMiss > 0) {
-        reply += `💡 **Good Standing:** You can miss up to **${att.safeToMiss}** more class(es) while maintaining your attendance above the required 75% cutoff.`;
-      } else {
-        reply += `⚠️ **Borderline Standing:** Your attendance is currently at 75%. Attending all upcoming classes is recommended to prevent dropping below the threshold.`;
-      }
-    } else {
-      reply += `🚨 **Warning:** Your attendance is currently below 75%. You need to attend the next **${att.neededTo75}** consecutive class(es) to reach the 75% minimum requirement.`;
-    }
-
-    if (att.recentLogs && att.recentLogs.length > 0) {
-      reply += `\n\n🗓️ **Recent Class Logs:**\n`;
-      att.recentLogs.forEach(l => {
-        const icon = l.status === 'PRESENT' ? '✅' : l.status === 'ON-DUTY' ? '🔵' : '❌';
-        reply += `- ${l.date || ''} (${l.session}): ${icon} ${l.status} ${l.subject ? `[${l.subject}]` : ''}\n`;
-      });
-    }
-
-    return reply;
-  }
-
-  // 5. Marks & Exams Queries
-  if (q.includes('mark') || q.includes('grade') || q.includes('result') || q.includes('score') || q.includes('exam') || q.includes('seme') || q.includes('fail') || q.includes('pass')) {
-    if (!marks || marks.length === 0) {
-      return `That data is not present in your database records.`;
-    }
-
-    let reply = `📝 **Academic Performance & Marks Report**\n\n`;
-    reply += `👤 **Student Details:** ${info.name || 'Student'} | Roll: ${info.rollNo || 'N/A'} | CGPA: **${info.cgpa || 'N/A'}**\n\n`;
-    reply += `📚 **Subject-Wise Marks & Exam Breakdown:**\n\n`;
-    marks.forEach(m => {
-      reply += `📘 **${m.courseCode} - ${m.courseName}**\n`;
-      reply += `  • Semester Exam: **${m.semesterExam}** / 60\n`;
-      reply += `  • Assignment: **${m.assignmentScore}** / 20\n`;
-      reply += `  • Practical: **${m.practicalScore}** / 20\n`;
-      reply += `  • **Total Score:** **${m.total}** / 100\n`;
-      reply += `  • **Letter Grade:** **${m.grade}**\n\n`;
-    });
-
-    return reply;
-  }
-
-  // 6. Assignments & Tasks Queries
-  if (q.includes('assignment') || q.includes('homework') || q.includes('task') || q.includes('pending') || q.includes('due') || q.includes('submit') || q.includes('submission')) {
-    let reply = `📚 **Assignment Tracker for ${info.name || 'Student'}**\n\n`;
-
-    if (pending.length === 0) {
-      reply += `🎉 **Great news!** You have zero pending assignments. All assigned coursework has been submitted.\n\n`;
-    } else {
-      reply += `⏳ **Pending Assignments (${pending.length}):**\n`;
-      pending.forEach((p, idx) => {
-        reply += `${idx + 1}. **${p.title}** (${p.courseCode})\n`;
-        reply += `   - **Due Date:** ${p.dueDate}\n`;
-        if (p.description) reply += `   - **Details:** ${p.description}\n`;
-      });
-      reply += `\n`;
-    }
-
-    if (completed && completed.length > 0) {
-      reply += `✅ **Completed Submissions (${completed.length}):**\n`;
-      completed.forEach(c => {
-        reply += `- ${c.title} (${c.courseCode})\n`;
-      });
-    }
-
-    return reply;
-  }
-
-  // 7. Full Profile / Personal Details Summary
-  if (q.includes('personal') || q.includes('detail') || q.includes('info') || q.includes('about me') || q.includes('profile')) {
-    if (!info.isProfileComplete && !info.name) {
-      return `That data is not present in your database records. You can complete your profile at /student/profile.`;
-    }
-
-    let reply = `📋 **Personal & Profile Summary from MongoDB**\n\n`;
-    reply += `• **Full Name:** ${info.name || 'Not specified'}\n`;
-    reply += `• **Roll Number:** ${info.rollNo || 'Not specified'}\n`;
-    reply += `• **Program / Branch:** ${info.program || 'Not specified'}\n`;
-    reply += `• **Semester:** ${info.semester ? `Semester ${info.semester}` : 'Not specified'}\n`;
-    reply += `• **CGPA:** ${info.cgpa || 'Not specified'}\n`;
-    reply += `• **Phone:** ${info.phone || 'Not specified'}\n`;
-    reply += `• **Email:** ${info.email || 'Not specified'}\n`;
-    reply += `• **Blood Group:** ${info.bloodGroup || 'Not specified'}\n`;
-    reply += `• **DOB:** ${info.dob || 'Not specified'}\n`;
-    reply += `• **Address:** ${info.address || 'Not specified'}, ${info.city || 'Not specified'}\n`;
-    if (info.profileImage) reply += `\n![Profile Photo](${info.profileImage})\n`;
-    if (info.github) reply += `• **GitHub:** [${info.github}](${info.github})\n`;
-    if (info.linkedin) reply += `• **LinkedIn:** [${info.linkedin}](${info.linkedin})\n`;
-    if (info.leetcode) reply += `• **LeetCode:** [${info.leetcode}](${info.leetcode})\n`;
-    return reply;
-  }
-
-  // 8. If vector knowledge chunk was retrieved
+  // 4. Institutional Knowledge Match
+  const institutionalMatch = (relevantKnowledge || []).find(k => k.similarityScore >= 0.25);
   if (institutionalMatch) {
     return `📜 **${institutionalMatch.title}**\n\n${institutionalMatch.content}`;
   }
 
-  // 9. Universal Strict Fallback
-  return `That data is not present in your database records.`;
+  // 5. Default Fallback
+  return `That specific information is not found in your student portal records.`;
 }
 
 /**
  * Controller endpoint: POST /api/student/ai/chat
- * Executes Hybrid RAG: Strictly bounded to the student's personal portal records + Vector Institutional Knowledge Chunks + Google Gemini LLM
+ * Executes Hybrid RAG: Personal Student Portal records (MongoDB) + Institutional Regulations (Vector RAG) + Google Gemini LLM
  */
 exports.chatWithStudentAi = async (req, res) => {
   try {
@@ -522,7 +354,7 @@ exports.chatWithStudentAi = async (req, res) => {
       return res.status(400).json({ message: 'Message string is required' });
     }
 
-    // 1. Concurrently fetch Live Structured Student Context (strictly scoped to this student) + Semantic Vector Knowledge Chunks
+    // 1. Concurrently fetch Live Structured Student Context + Semantic Vector Knowledge Chunks
     const [studentContext, relevantKnowledge] = await Promise.all([
       getStudentContext(userId),
       searchKnowledgeBase(message, 3)
@@ -536,7 +368,7 @@ exports.chatWithStudentAi = async (req, res) => {
       score: k.similarityScore
     }));
 
-    // 2. Invoke Google Gemini LLM if GEMINI_API_KEY is configured
+    // 2. Invoke Google Gemini LLM
     if (process.env.GEMINI_API_KEY) {
       const candidates = [
         process.env.GEMINI_MODEL,
@@ -550,7 +382,7 @@ exports.chatWithStudentAi = async (req, res) => {
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
       const knowledgeContextText = (relevantKnowledge || []).length > 0
-        ? relevantKnowledge.map((k, i) => `[INSTITUTIONAL KNOWLEDGE DOC ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
+        ? relevantKnowledge.map((k, i) => `[INSTITUTIONAL REGULATION ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
         : 'No specific institutional policy document matched.';
 
       const hybridPrompt = `
@@ -570,21 +402,32 @@ ${knowledgeContextText}
 [STUDENT QUERY]
 "${message}"
 
-[STRICT SCOPE & BOUNDARY RULES]
-1. PORTAL ISOLATION: You can ONLY answer queries regarding this logged-in student's portal data:
-   - Their Profile (Personal, Contact, Roll No, CGPA, Social links, Resume, Photo)
-   - Their Attendance (Total classes, Present/Absent/OD count, percentage, safe-to-miss margin, daily schedule)
-   - Their Enrolled Courses & Subjects for their branch and semester
-   - Their Course Marks & Letter Grades (Exam 60, Assignment 20, Practical 20, Total 100)
-   - Their Course Assignments & Submissions (Pending deadlines, completed submissions)
-   - Institutional Student Regulations (Attendance rules, 75% cutoff, condonation, grading scale)
-2. SECURITY & BOUNDARY: If the user asks about other students, faculty private details, administrative settings, faculty salaries, or backend management, decline politely:
-   "I can only access and assist with information related to your personal Student Portal and academic records."
-3. GROUNDING: Provide exact numbers and metrics computed in the context. Never hallucinate marks or attendance numbers.
-4. IMAGES: If asked for profile photo or image, format as markdown image: ![Profile Photo](profileImage_URL).
-5. LINKS: If asked for coding/social links (GitHub, LinkedIn, LeetCode, Resume), format as clickable markdown links: [Label](URL).
-6. MISSING DATA: If a field is null, unfilled, or missing in the student's records, state clearly: "That data is not present in your database records."
-7. FORMATTING: Use clean, professional Markdown with bullet points and bold highlights.
+[STRICT SCOPE & PRECISION RULES - ABSOLUTE PRIORITY]
+1. DEFAULT TO ONLY THE EXACT DETAIL ASKED (CRITICAL):
+   - Unless the student explicitly asks for "full details", "complete report", "detailed breakdown", "summary", or "everything", you MUST ONLY answer with the EXACT single detail requested.
+   - DO NOT dump other metrics, do not add unsolicited advice, and do not provide full profile or attendance sheets.
+   - Examples:
+     • Question: "What is my attendance percentage?" -> Answer ONLY: "Your current attendance is **84.5%** (Safe / Above 75%)."
+     • Question: "What is my CGPA?" -> Answer ONLY: "Your current CGPA is **8.75**."
+     • Question: "What is my roll number?" -> Answer ONLY: "Your Roll Number is **21CS101**."
+     • Question: "What is my email?" -> Answer ONLY: "Your registered email is **student@example.com**."
+     • Question: "What is my branch / department?" -> Answer ONLY: "Your branch is **Computer Science and Engineering**."
+     • Question: "What is my semester?" -> Answer ONLY: "You are currently in **Semester 6**."
+     • Question: "How many classes can I safely miss?" -> Answer ONLY: "You can safely miss up to **2** class(es) while maintaining 75% attendance."
+     • Question: "How many assignments are pending?" -> Answer ONLY: "You have **2** pending assignment(s)."
+     • Question: "Show my profile photo" -> Answer ONLY: "Here is your profile photo:\n\n![Profile Photo](profileImage_URL)"
+     • Question: "Show my GitHub" -> Answer ONLY: "Your GitHub link is [URL](URL)."
+
+2. FULL DETAILS ONLY WHEN EXPLICITLY ASKED:
+   - ONLY provide a complete multi-field breakdown or full summary when the student explicitly uses words like: "give full details", "show all details", "full report", "detailed breakdown", "complete summary", or "everything".
+
+3. PORTAL ISOLATION & SECURITY:
+   - You can ONLY access this logged-in student's records.
+   - If asked about other students, faculty private details, administrative settings, or faculty salaries, decline politely:
+     "I can only access and assist with information related to your personal Student Portal and academic records."
+
+4. GROUNDING: Provide exact numbers and metrics from MongoDB context. Never hallucinate.
+5. FORMATTING: Use clean, professional Markdown with bold highlights.
 `;
 
       let generated = false;
@@ -599,16 +442,15 @@ ${knowledgeContextText}
             break;
           }
         } catch (err) {
-          // Try next model candidate
+          // Try next candidate
         }
       }
 
       if (!generated) {
-        aiReply = generateDataGroundedAnswer(message, studentContext, relevantKnowledge);
+        aiReply = generateFallbackAnswer(message, studentContext, relevantKnowledge);
       }
     } else {
-      // Local Hybrid Grounding Engine (combines live DB + Vector Knowledge Chunks)
-      aiReply = generateDataGroundedAnswer(message, studentContext, relevantKnowledge);
+      aiReply = generateFallbackAnswer(message, studentContext, relevantKnowledge);
     }
 
     return res.json({
