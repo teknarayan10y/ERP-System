@@ -36,6 +36,8 @@ const CATEGORIES = [
 
 const ALL_QUICK_CHIPS = [
   { cat: 'attendance', label: '📊 Attendance Percentage', query: 'What is my attendance percentage?' },
+  { cat: 'attendance', label: '📅 Today\'s Attendance', query: 'What is my attendance status for today?' },
+  { cat: 'attendance', label: '🗓️ Yesterday\'s Attendance', query: 'What was my attendance yesterday?' },
   { cat: 'attendance', label: '💡 Safe Classes Margin', query: 'How many classes can I safely miss?' },
   { cat: 'attendance', label: '🚨 Classes Needed for 75%', query: 'How many classes do I need to attend to reach 75% attendance?' },
   { cat: 'regulations', label: '📜 Condonation & Shortage Rules', query: 'What are the college rules for attendance shortage and condonation?' },
