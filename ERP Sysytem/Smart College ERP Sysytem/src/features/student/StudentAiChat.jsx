@@ -54,8 +54,7 @@ const INITIAL_MESSAGE = {
   id: 'init-msg',
   sender: 'ai',
   text: `👋 **Welcome to Student AI!**\n\nI am your **AI Academic Co-Pilot**, connected in real-time to your Student Portal. Ask me anything by typing or speaking through your microphone!`,
-  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  sources: []
+  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 };
 
 /**
@@ -335,7 +334,6 @@ function getFemaleVoice(voices) {
     try {
       const res = await api.studentAiChat(textToSend.trim());
       const aiReply = res?.reply || 'Sorry, I could not process your query at this moment.';
-      const sources = res?.sources || [];
       const aiMsgId = `ai-${Date.now()}`;
 
       setMessages((prev) => [
@@ -344,7 +342,6 @@ function getFemaleVoice(voices) {
           id: aiMsgId,
           sender: 'ai',
           text: aiReply,
-          sources,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -597,24 +594,6 @@ function getFemaleVoice(voices) {
                   <div className="msg-text-content">
                     {formatMessageText(msg.text)}
                   </div>
-
-                  {/* Grounded Sources Pill Container */}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="modern-sources-box">
-                      <div className="sources-header">
-                        <FaBookOpen />
-                        <span>Referenced Institutional Documents:</span>
-                      </div>
-                      <div className="sources-chips-grid">
-                        {msg.sources.map((s, sIdx) => (
-                          <div key={sIdx} className="source-pill">
-                            <span className="source-dot"></span>
-                            <span className="source-name">{s.title}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Bubble Footer with Listen & Copy Buttons */}
                   <div className="modern-msg-footer">

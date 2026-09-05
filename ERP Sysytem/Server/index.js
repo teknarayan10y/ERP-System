@@ -51,9 +51,7 @@ app.use('/api/faculty/assignments', facultyAssignmentRoutes);
 
 app.use(express.json());
 
-const { seedKnowledgeBase } = require('./services/ragService');
-
-// ONE-TIME INDEX FIX/SYNC & RAG SEEDING ON START
+// ONE-TIME INDEX FIX/SYNC ON START
 mongoose.connection.once('open', async () => {
   try {
     await Attendance.collection.dropIndex('course_1_date_1').catch(() => {});
@@ -61,13 +59,6 @@ mongoose.connection.once('open', async () => {
     console.log('[Attendance] indexes synced');
   } catch (e) {
     console.error('[Attendance] index sync error:', e && e.message ? e.message : e);
-  }
-
-  // Seed Knowledge Base for Vector RAG
-  try {
-    await seedKnowledgeBase();
-  } catch (e) {
-    console.error('[RAG] seed error:', e && e.message ? e.message : e);
   }
 });
 
