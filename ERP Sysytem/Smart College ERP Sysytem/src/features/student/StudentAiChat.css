@@ -608,6 +608,48 @@
   background: #f1f5f9;
 }
 
+/* SOURCES CONTAINER */
+.modern-sources-box {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #e2e8f0;
+  font-size: 11px;
+}
+
+.sources-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.sources-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+  font-weight: 500;
+}
+
+.source-dot {
+  width: 5px;
+  height: 5px;
+  background: #2563eb;
+  border-radius: 50%;
+}
+
 /* VOICE MODE TOGGLE BUTTON IN HEADER */
 .ai-voice-toggle-btn.is-voice-on {
   background: rgba(16, 185, 129, 0.2) !important;

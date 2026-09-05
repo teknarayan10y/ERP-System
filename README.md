@@ -2,13 +2,13 @@
 
 Welcome to **CampusOS**, an enterprise-grade Academic Enterprise Resource Planning (ERP) platform and Intelligent Student Co-Pilot built for modern colleges and universities.
 
-CampusOS unifies **Administrative Governance**, **Faculty Academic Workflows**, **Student Self-Service Portals**, and an **Autonomous Student AI Assistant** with bidirectional voice capabilities.
+CampusOS unifies **Administrative Governance**, **Faculty Academic Workflows**, **Student Self-Service Portals**, and an **Autonomous Hybrid RAG AI Assistant** with bidirectional voice capabilities.
 
 ---
 
 ## 📑 Table of Contents
 1. [System Overview & Architecture](#-system-overview--architecture)
-2. [Student AI Co-Pilot (Live Data & Voice Engine)](#-student-ai-co-pilot-live-data--voice-engine)
+2. [Student AI Co-Pilot (Hybrid RAG & Voice Engine)](#-student-ai-co-pilot-hybrid-rag--voice-engine)
 3. [Architecture Flow Diagram](#️-student-ai-architecture-flow-diagram)
 4. [Interactive System Mermaid Flowchart](#-interactive-system-mermaid-flowchart)
 5. [Core ERP Modules](#-core-erp-modules)
@@ -46,20 +46,21 @@ CampusOS solves the fragmentation of modern college administrative operations by
                                                                ┌───────────────────────────┐
                                                                │  🤖 Student AI Assistant  │
                                                                │  • Live MongoDB Grounding │
-                                                               │  • Live Academic Answers  │
+                                                               │  • Vector Policy RAG      │
                                                                │  • Natural Female Voice   │
                                                                └───────────────────────────┘
 ```
 
 ---
 
-## 🤖 Student AI Co-Pilot (Live Data & Voice Engine)
+## 🤖 Student AI Co-Pilot (Hybrid RAG & Voice Engine)
 
 The **Student AI Co-Pilot** is an intelligent assistant embedded inside the Student Portal. It acts as an autonomous academic advisor that can answer student questions about personal grades, attendance percentages, safe-to-miss class margins, upcoming deadlines, and official university handbooks.
 
 ### 🌟 Key Capabilities of Student AI:
-1. **Live Personal Grounding (MongoDB)**:
-   - Extracts live real-time attendance counts, marks, CGPA, courses, and pending tasks.
+1. **Hybrid RAG Architecture**:
+   - **Personal Grounding (MongoDB)**: Extracts live real-time attendance counts, marks, CGPA, courses, and pending tasks.
+   - **Institutional Knowledge (Vector RAG)**: Performs cosine similarity searches over vectorized college handbooks and policies (75% minimum attendance rule, shortage condonation, 10-point letter grading formula, and exam minimums).
 2. **Zero-Caching Instant Synchronization**:
    - The moment a faculty marks attendance or publishes exam marks, Student AI instantly accesses the updated data on the student's next query.
 3. **Date-Specific & Historical Schedule Retrieval**:
@@ -74,7 +75,7 @@ The **Student AI Co-Pilot** is an intelligent assistant embedded inside the Stud
 
 ## 🖼️ Student AI Architecture Flow Diagram
 
-![Student AI - Live Data & Voice Engine Architecture](docs/assets/student_ai_flow_diagram.jpg)
+![Student AI - Hybrid RAG & Voice Engine Architecture](docs/assets/student_ai_flow_diagram.jpg)
 
 ---
 
@@ -104,7 +105,8 @@ flowchart TD
     subgraph BackendContext ["2. Backend Authentication & Data Grounding (studentAiController.js)"]
         C --> D["Auth Middleware: JWT Verification & Scope Extraction"]:::processNode
         
-        D --> E["Live Student Context Extractor (getStudentContext)"]:::dbNode
+        D -->|Concurrent Query 1| E["Live Student Context Extractor (getStudentContext)"]:::dbNode
+        D -->|Concurrent Query 2| F["Semantic Vector RAG Search (ragService.js)"]:::ragNode
 
         subgraph MongoDB ["MongoDB Live Structured Collections (Zero Caching)"]
             E --> M1[("User & StudentProfile")]:::dbNode
@@ -113,13 +115,19 @@ flowchart TD
             E --> M4[("Course Marks & Grades")]:::dbNode
             E --> M5[("Assignments & Submissions")]:::dbNode
         end
+
+        subgraph VectorDB ["Institutional Vector Knowledge Base"]
+            F --> V1[("KnowledgeChunk Embeddings")]:::ragNode
+            V1 -->|Cosine Similarity Search| V2["Top 3 Matching Regulation Chunks (75% Cutoff, Condonation, Grading Scale)"]:::ragNode
+        end
     end
 
     %% 3. HYBRID PROMPT & INTELLIGENCE ENGINE
-    subgraph Engine ["3. Intelligence & Prompt Engineering"]
+    subgraph Engine ["3. Hybrid Intelligence & Prompt Engineering"]
         M1 & M2 & M3 & M4 & M5 --> G["Aggregated Student Context (Live JSON)"]:::processNode
-
-        G --> I["Construct Strict Prompt (Personal Grounding + Precision Rules)"]:::processNode
+        V2 --> H["Retrieved Policy Context (Markdown)"]:::processNode
+        
+        G & H --> I["Construct Strict Hybrid Prompt (Personal Grounding + Precision Rules)"]:::processNode
 
         I --> J{"Google Gemini API Available?"}:::decisionNode
         
@@ -245,10 +253,10 @@ CampusOS uses direct, real-time database queries on every action:
 | `GET` | `/api/profile/me` | Student | Fetch student profile records |
 | `PUT` | `/api/profile/me` | Student | Update student profile & social handles |
 
-### 🤖 Student AI
+### 🤖 Student AI & RAG
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/student/ai/chat` | Student | Scoped AI chat grounded in the student's live MongoDB records |
+| `POST` | `/api/student/ai/chat` | Student | Scoped Hybrid RAG AI chat with live MongoDB & vector policies |
 
 ### 📊 Academic & Faculty Operations
 | Method | Endpoint | Access | Description |
@@ -271,6 +279,7 @@ CampusOS uses direct, real-time database queries on every action:
 | **Backend API** | Node.js, Express.js | RESTful routing, JWT authentication, RBAC middleware |
 | **Database** | MongoDB, Mongoose ODM | Document collections, aggregations, compound indices |
 | **AI / LLM** | Google Generative AI SDK | Google Gemini models (`gemini-2.5-flash`, `gemini-1.5-flash`) |
+| **Vector RAG** | In-Memory / Vector Collection | Semantic policy embeddings with cosine similarity search |
 
 ---
 

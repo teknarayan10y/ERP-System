@@ -7,6 +7,7 @@ const StudentSubmission = require('../models/StudentSubmission');
 const Course = require('../models/Course');
 const StudentProfile = require('../models/StudentProfile');
 const User = require('../models/User');
+const { searchKnowledgeBase } = require('../services/ragService');
 
 /**
  * Helper to ensure URLs are properly formatted
@@ -461,7 +462,7 @@ function findDailyRecordInQuery(userQuery, dailyRecords = []) {
 /**
  * Concise Fallback Answer Generator (when Gemini LLM is unavailable)
  */
-function generateFallbackAnswer(userQuery, ctx) {
+function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
   const q = (userQuery || '').toLowerCase().trim();
   const att = ctx.attendance;
   const info = ctx.studentInfo;
@@ -668,13 +669,19 @@ function generateFallbackAnswer(userQuery, ctx) {
       (info.linkedin ? `• **LinkedIn**: [${info.linkedin}](${info.linkedin})\n` : '');
   }
 
-  // 9. Default Contextual Summary
+  // 9. Institutional Knowledge Match
+  const institutionalMatch = (relevantKnowledge || []).find(k => k.similarityScore >= 0.25);
+  if (institutionalMatch) {
+    return `📜 **${institutionalMatch.title}**\n\n${institutionalMatch.content}`;
+  }
+
+  // 10. Default Contextual Summary
   return `Here is your current academic summary:\n\n• **Student**: ${info.name} (${info.rollNo || info.email || 'N/A'})\n• **Attendance**: **${att.percentage}%** (${att.effectivePresent}/${att.totalClasses} classes)\n• **CGPA**: **${info.cgpa || 'N/A'}**\n• **Pending Tasks**: **${pending.length}** assignment(s)\n\nAsk me specific questions like *"What is my attendance today?"*, *"Was I present on September 1st?"*, or *"Show my marks"*.`;
 }
 
 /**
  * Controller endpoint: POST /api/student/ai/chat
- * Answers from live personal Student Portal records (MongoDB) via Google Gemini LLM
+ * Executes Hybrid RAG: Personal Student Portal records (MongoDB) + Institutional Regulations (Vector RAG) + Google Gemini LLM
  */
 exports.chatWithStudentAi = async (req, res) => {
   try {
@@ -688,11 +695,19 @@ exports.chatWithStudentAi = async (req, res) => {
       return res.status(400).json({ message: 'Message string is required' });
     }
 
-    // 1. Fetch Live Structured Student Context (Zero Caching)
-    const studentContext = await getStudentContext(userId);
+    // 1. Concurrently fetch Live Structured Student Context + Semantic Vector Knowledge Chunks (Zero Caching)
+    const [studentContext, relevantKnowledge] = await Promise.all([
+      getStudentContext(userId),
+      searchKnowledgeBase(message, 3)
+    ]);
 
     let aiReply = '';
-    let modelUsed = 'Deterministic Rule Engine';
+    let modelUsed = 'Deterministic Rule Engine (Hybrid RAG)';
+    const sources = (relevantKnowledge || []).map(k => ({
+      title: k.title,
+      category: k.category,
+      score: k.similarityScore
+    }));
 
     // 2. Invoke Google Gemini LLM
     if (process.env.GEMINI_API_KEY) {
@@ -707,13 +722,22 @@ exports.chatWithStudentAi = async (req, res) => {
       const uniqueModels = [...new Set(candidates)];
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+      const knowledgeContextText = (relevantKnowledge || []).length > 0
+        ? relevantKnowledge.map((k, i) => `[INSTITUTIONAL REGULATION ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
+        : 'No specific institutional policy document matched.';
+
       const hybridPrompt = `
 You are the dedicated AI Assistant for the Student Portal.
-Your scope of authority is STRICTLY BOUNDED to the personal portal records of the logged-in student.
+Your scope of authority is STRICTLY BOUNDED to the personal portal records of the logged-in student, and relevant institutional student regulations.
 
 ==================================================
 [1. LOGGED-IN STUDENT PORTAL DATABASE CONTEXT (Live MongoDB - Zero Caching)]
 ${JSON.stringify(studentContext, null, 2)}
+==================================================
+
+==================================================
+[2. RETRIEVED STUDENT REGULATIONS & POLICIES (Vector RAG)]
+${knowledgeContextText}
 ==================================================
 
 [STUDENT QUERY]
@@ -765,7 +789,7 @@ ${JSON.stringify(studentContext, null, 2)}
           const result = await model.generateContent(hybridPrompt);
           if (result && result.response) {
             aiReply = result.response.text();
-            modelUsed = `Google Gemini (${modelName})`;
+            modelUsed = `Google Gemini (${modelName}) + Hybrid RAG`;
             generated = true;
             break;
           }
@@ -775,16 +799,17 @@ ${JSON.stringify(studentContext, null, 2)}
       }
 
       if (!generated) {
-        aiReply = generateFallbackAnswer(message, studentContext);
+        aiReply = generateFallbackAnswer(message, studentContext, relevantKnowledge);
       }
     } else {
-      aiReply = generateFallbackAnswer(message, studentContext);
+      aiReply = generateFallbackAnswer(message, studentContext, relevantKnowledge);
     }
 
     return res.json({
       success: true,
       reply: aiReply,
       model: modelUsed,
+      sources,
       timestamp: new Date().toISOString()
     });
 
