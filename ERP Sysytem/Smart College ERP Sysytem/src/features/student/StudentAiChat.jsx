@@ -1,7 +1,7 @@
-// src/features/student/StudentAiChat.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../../auth/api';
 import {
+
   FaRobot,
   FaPaperPlane,
   FaTimes,
@@ -22,7 +22,8 @@ import {
   FaMicrophoneSlash,
   FaVolumeUp,
   FaVolumeMute,
-  FaStop
+  FaStop,
+  FaPaperclip
 } from 'react-icons/fa';
 import './StudentAiChat.css';
 
@@ -94,6 +95,8 @@ export default function StudentAiChat() {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
+  const [attachedFile, setAttachedFile] = useState(null);
+  const fileInputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -298,6 +301,8 @@ function getFemaleVoice(voices) {
   const handleRefresh = () => {
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     setSpeakingMsgId(null);
+    setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setMessages([
       {
         ...INITIAL_MESSAGE,
@@ -316,24 +321,29 @@ function getFemaleVoice(voices) {
 
   const handleSend = async (queryText) => {
     const textToSend = queryText || input;
-    if (!textToSend.trim() || loading) return;
+    if (!textToSend.trim() && !attachedFile) return;
+    if (loading) return;
 
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     setSpeakingMsgId(null);
 
+    const fileToSend = attachedFile;
     const userMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
-      text: textToSend.trim(),
+      text: textToSend.trim() || `📎 ${fileToSend?.name}`,
+      attachedFile: fileToSend ? fileToSend.name : null,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages((prev) => [...prev, userMessage]);
     if (!queryText) setInput('');
+    setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setLoading(true);
 
     try {
-      const res = await api.studentAiChat(textToSend.trim());
+      const res = await api.studentAiChat(textToSend.trim() || `Analyse this file: ${fileToSend?.name}`, fileToSend);
       const aiReply = res?.reply || 'Sorry, I could not process your query at this moment.';
       const sources = res?.sources || [];
       const aiMsgId = `ai-${Date.now()}`;
@@ -594,6 +604,12 @@ function getFemaleVoice(voices) {
                 </div>
 
                 <div className="modern-msg-bubble">
+                  {msg.attachedFile && (
+                    <div className="user-msg-file-badge">
+                      <FaPaperclip className="msg-file-icon" />
+                      <span>{msg.attachedFile}</span>
+                    </div>
+                  )}
                   <div className="msg-text-content">
                     {formatMessageText(msg.text)}
                   </div>
@@ -696,8 +712,48 @@ function getFemaleVoice(voices) {
               </div>
             )}
 
+            {/* Attached File Preview Floating Card */}
+            {attachedFile && (
+              <div className="attached-file-preview-bar">
+                <div className="attached-file-chip">
+                  <div className="file-chip-icon-box">
+                    <FaFileAlt className="file-chip-icon" />
+                  </div>
+                  <div className="file-chip-info">
+                    <span className="file-chip-name" title={attachedFile.name}>
+                      {attachedFile.name}
+                    </span>
+                    <span className="file-chip-size">
+                      {attachedFile.size ? (attachedFile.size < 1048576 ? (attachedFile.size / 1024).toFixed(1) + ' KB' : (attachedFile.size / 1048576).toFixed(1) + ' MB') : 'Ready'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="file-chip-remove-btn"
+                    onClick={() => {
+                      setAttachedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    title="Remove attached file"
+                  >
+                    <FaTimes />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="modern-input-card">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                style={{ display: 'none' }}
+                accept=".pdf,.csv,.xlsx,.xls,.json,.txt,.md,.docx"
+                onChange={e => setAttachedFile(e.target.files[0] || null)}
+              />
+
               <button
+                type="button"
                 className="modern-refresh-input-btn"
                 onClick={handleRefresh}
                 title="Clear & Reset Conversation"
@@ -706,10 +762,22 @@ function getFemaleVoice(voices) {
                 <FaSyncAlt />
               </button>
 
+              {/* 📎 Attach File Button */}
+              <button
+                type="button"
+                className={`modern-attach-btn ${attachedFile ? 'has-file' : ''}`}
+                onClick={() => fileInputRef.current?.click()}
+                title={attachedFile ? `Attached: ${attachedFile.name} (Click to replace)` : "Attach a file (PDF, CSV, Excel, JSON, TXT...)"}
+                disabled={loading}
+              >
+                <FaPaperclip />
+                {attachedFile && <span className="attach-btn-dot" />}
+              </button>
+
               <textarea
                 ref={textareaRef}
                 className="modern-textarea"
-                placeholder={isListening ? "Listening... Speak your question" : "Ask StudentAI anything by text or click mic to speak"}
+                placeholder={isListening ? "Listening... Speak your question" : attachedFile ? "Ask anything about the attached file..." : "Ask StudentAI or attach a file (PDF, CSV, Excel...)"}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -730,9 +798,9 @@ function getFemaleVoice(voices) {
 
                 {/* Send Button */}
                 <button
-                  className={`modern-send-btn ${input.trim() && !loading ? 'can-send' : ''}`}
+                  className={`modern-send-btn ${(input.trim() || attachedFile) && !loading ? 'can-send' : ''}`}
                   onClick={() => handleSend()}
-                  disabled={!input.trim() || loading}
+                  disabled={(!input.trim() && !attachedFile) || loading}
                   title="Send message (Enter)"
                 >
                   <FaPaperPlane />

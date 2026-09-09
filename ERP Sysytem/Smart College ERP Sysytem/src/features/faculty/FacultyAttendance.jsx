@@ -78,7 +78,7 @@ export default function FacultyAttendance() {
       const c = countDay(d?.dailySchedule || []);
       present += c.present; onDuty += c.onDuty; absent += c.absent; total += c.total;
     }
-    const percentage = total ? Math.round(((present + onDuty) / total) * 100) : 0;
+    const percentage = total ? Math.round(((present + onDuty) / total) * 10000) / 100 : 0;
     return { present, onDuty, absent, total, percentage };
   }
 
@@ -207,7 +207,7 @@ export default function FacultyAttendance() {
       const agg = aggregateOverallBySchedule(myRows);
       total = agg.total; present = agg.present; onDuty = agg.onDuty; absent = agg.absent;
     }
-    const pct = (num) => total > 0 ? Math.round((num / total) * 100) : 0;
+    const pct = (num) => total > 0 ? Math.round((num / total) * 10000) / 100 : 0;
     return {
       academicYear: myRows[0]?.academicYear || '',
       semester: myRows[0]?.semester || '',

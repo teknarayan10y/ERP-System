@@ -26,6 +26,8 @@ const facultyMarksRoutes = require('./routes/facultyMarksRoutes');
 const studentAssignmentRoutes = require('./routes/studentAssignmentRoutes');
 const studentSubmissionRoutes = require('./routes/studentSubmissionRoutes');
 const studentAiRoutes = require('./routes/studentAiRoutes');
+const facultyAiRoutes = require('./routes/facultyAiRoutes');
+const adminAiRoutes = require('./routes/adminAiRoutes');
 
 
 const mongoose = require('mongoose');
@@ -89,6 +91,8 @@ app.use('/api/student/attendance', studentAttendanceRoutes);
 app.use('/api/student/assignments', studentAssignmentRoutes);
 app.use('/api/student/assignments', studentSubmissionRoutes);
 app.use('/api/student/ai', studentAiRoutes);
+app.use('/api/faculty/ai', facultyAiRoutes);
+app.use('/api/admin/ai', adminAiRoutes);
 
 
 app.use('/api/faculty/analytics', facultyAnalyticsRoutes);

@@ -15,6 +15,7 @@ import {
   FaSignOutAlt,
 } from "react-icons/fa";
 import { api } from "../../auth/api";
+import FacultyAiChat from "./FacultyAiChat";
 import "../student/StudentDashboard.css";
 
 function toAbsoluteUploadUrl(pathOrUrl) {
@@ -43,12 +44,17 @@ export default function FacultyLayout() {
 
   // Fetch auth user for name/email
   useEffect(() => {
-    (async () => {
+    const refreshUser = async () => {
       try {
         const me = await api.me();
         if (me?.user) setUserState(me.user);
       } catch { }
-    })();
+    };
+    refreshUser();
+    window.addEventListener("profile-info-updated", refreshUser);
+    return () => {
+      window.removeEventListener("profile-info-updated", refreshUser);
+    };
   }, []);
 
   // Load avatar and cache-bust
@@ -71,9 +77,11 @@ export default function FacultyLayout() {
     const onChange = () => setPhotoUrl(localStorage.getItem("faculty_photo_url") || "");
     window.addEventListener("storage", onChange);
     window.addEventListener("faculty-photo-updated", onChange);
+    window.addEventListener("profile-photo-updated", onChange);
     return () => {
       window.removeEventListener("storage", onChange);
       window.removeEventListener("faculty-photo-updated", onChange);
+      window.removeEventListener("profile-photo-updated", onChange);
     };
   }, []);
 
@@ -183,6 +191,9 @@ export default function FacultyLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Modern Faculty AI Co-Pilot Floating Assistant */}
+      <FacultyAiChat />
     </div>
   );
 }

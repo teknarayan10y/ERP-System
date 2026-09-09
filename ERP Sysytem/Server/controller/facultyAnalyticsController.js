@@ -74,9 +74,8 @@ exports.today = async (req, res, next) => {
     const subjects = [];
     for (const [k, v] of bySubject.entries()) {
       const marked = v.present + v.onDuty + v.absent;
-      // Without exact roster per subject, set unmarked to 0 for now (or compute if you pass roster sizes).
       const unmarked = 0;
-      const pct = v.total ? Math.round(((v.present + v.onDuty) / v.total) * 100) : 0;
+      const pct = v.total ? Math.round(((v.present + v.onDuty) / v.total) * 10000) / 100 : 0;
       subjects.push({ subject: v.subject || k, total: v.total, present: v.present, onDuty: v.onDuty, absent: v.absent, unmarked, pct });
     }
 
@@ -85,7 +84,7 @@ exports.today = async (req, res, next) => {
     for (const s of subjects) { T+=s.total; P+=s.present; OD+=s.onDuty; A+=s.absent; U+=s.unmarked; }
     const totals = {
       total: T, present: P, onDuty: OD, absent: A, unmarked: U,
-      pct: T ? Math.round(((P + OD) / T) * 100) : 0
+      pct: T ? Math.round(((P + OD) / T) * 10000) / 100 : 0
     };
 
     res.json({ totals, subjects });
@@ -139,7 +138,7 @@ exports.subjectSummary = async (req, res, next) => {
 
     const items = [];
     for (const [k, v] of acc.entries()) {
-      const pct = v.total ? Math.round(((v.present + v.onDuty) / v.total) * 100) : 0;
+      const pct = v.total ? Math.round(((v.present + v.onDuty) / v.total) * 10000) / 100 : 0;
       items.push({ subject: v.subject || k, total: v.total, present: v.present, onDuty: v.onDuty, absent: v.absent, pct });
     }
     items.sort((a, b) => a.subject.localeCompare(b.subject));

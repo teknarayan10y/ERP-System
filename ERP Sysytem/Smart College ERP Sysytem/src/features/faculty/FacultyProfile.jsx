@@ -1,6 +1,7 @@
 // src/features/faculty/FacultyProfile.jsx
 import React, { useEffect, useState } from "react";
 import { api } from "../../auth/api";
+import { getUser, setUser } from "../../auth/storage";
 import "../student/StudentProfile.css";
 
 function toAbsoluteUploadUrl(pathOrUrl) {
@@ -71,9 +72,21 @@ export default function FacultyProfile() {
   };
 
   async function reloadProfile() {
+    let u = getUser() || {};
+    try {
+      const me = await api.me();
+      if (me?.user) {
+        u = { ...u, ...me.user };
+        setUser(me.user);
+      }
+    } catch {}
+
     const res = await api.facultyProfileGet();
-    const p = res.profile || {};
-    const u = res.user || {};
+    const p = res?.profile || {};
+    if (res?.user) {
+      u = { ...u, ...res.user };
+      setUser(res.user);
+    }
 
     const names = splitName(u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim());
     const profileImageUrl = toAbsoluteUploadUrl(p.profileImage) || "";
@@ -82,15 +95,19 @@ export default function FacultyProfile() {
       ? p.teachingSubjects.join(", ")
       : (p.teachingSubjects || "");
 
+    const finalFirstName = p.firstName || u.firstName || names.firstName || "";
+    const finalLastName = p.lastName || u.lastName || names.lastName || "";
+    const finalEmail = p.email || u.email || "";
+
     setForm(f => ({
       ...f,
       // Personal
-      firstName: p.firstName || u.firstName || names.firstName || "",
-      lastName: p.lastName || u.lastName || names.lastName || "",
+      firstName: finalFirstName,
+      lastName: finalLastName,
       gender: p.gender || "",
       dob: p.dob || "",
       // Contact
-      email: u.email || p.email || "",
+      email: finalEmail,
       phone: p.phone || "",
       altPhone: p.altPhone || "",
       address: p.address || "",
@@ -120,11 +137,16 @@ export default function FacultyProfile() {
       remarks: p.remarks || "",
     }));
 
-    // cache avatar for header
+    // cache avatar and name/email for header
     if (profileImageUrl) {
-      localStorage.setItem("faculty_profile_image", profileImageUrl);
+      localStorage.setItem("faculty_photo_url", profileImageUrl);
+      window.dispatchEvent(new CustomEvent("faculty-photo-updated", { detail: { url: profileImageUrl } }));
       window.dispatchEvent(new CustomEvent("profile-photo-updated", { detail: { url: profileImageUrl } }));
     }
+    const displayName = `${finalFirstName} ${finalLastName}`.trim();
+    if (displayName) localStorage.setItem("faculty_name", displayName);
+    if (finalEmail) localStorage.setItem("faculty_email", finalEmail);
+    window.dispatchEvent(new Event("profile-info-updated"));
   }
 
   useEffect(() => {
@@ -161,7 +183,7 @@ export default function FacultyProfile() {
         // Append allowed fields (exclude facultyId)
         const keys = [
           "firstName","lastName","gender","dob",
-          "phone","altPhone","address","city","state","pincode",
+          "email","phone","altPhone","address","city","state","pincode",
           "department","designation",
           "qualification","experienceYears","experienceSummary","employmentStatus",
           "github","linkedin","portfolio","remarks"
@@ -177,17 +199,19 @@ export default function FacultyProfile() {
         // IMPORTANT: field name must match multer.single('profileImage')
         fd.append("profileImage", newPhotoFile);
 
-        await api.facultyProfilePutForm(fd);
+        const res = await api.facultyProfilePutForm(fd);
+        if (res?.user) setUser(res.user);
       } else {
         const {
           facultyId, teachingSubjectsText, profileImage, profileImagePreview, profileImageUrl,
           ...rest
         } = form;
 
-        await api.facultyProfilePut({
+        const res = await api.facultyProfilePut({
           ...rest,
           teachingSubjects: subjects,
         });
+        if (res?.user) setUser(res.user);
       }
 
       setOk("Profile updated");

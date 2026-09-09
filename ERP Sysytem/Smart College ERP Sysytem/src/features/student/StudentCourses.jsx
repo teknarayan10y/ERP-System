@@ -118,7 +118,7 @@ export default function StudentCourses() {
     );
   }
 
-  const semesterOptions = [1,2,3,4,5,6,7,8];
+  const semesterOptions = [1, 2, 3, 4, 5, 6, 7, 8];
 
   return (
     <div className="courses-elite">

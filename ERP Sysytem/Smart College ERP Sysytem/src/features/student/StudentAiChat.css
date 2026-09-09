@@ -540,12 +540,12 @@
 }
 
 .modern-highlight-text {
-  color: #312e81;
-  font-weight: 700;
+  color: #1d4ed8 !important;
+  font-weight: 700 !important;
 }
 
 .is-user .modern-highlight-text {
-  color: #e0e7ff;
+  color: #bfdbfe !important;
 }
 
 /* LINKS & IMAGES IN CHAT */
@@ -854,8 +854,10 @@
   background: transparent !important;
   border: none !important;
   outline: none !important;
-  font-size: 13.5px;
-  color: #0f172a;
+  font-size: 14px !important;
+  color: #000000 !important;
+  caret-color: #000000 !important;
+  font-weight: 500 !important;
   resize: none;
   max-height: 100px;
   line-height: 1.4;
@@ -953,6 +955,195 @@
   font-size: 10.5px;
   color: #94a3b8;
   margin-top: 6px;
+}
+
+/* =========================================================
+   ATTACH FILE BUTTON & PREVIEW CHIP (ChatGPT / Gemini style)
+   ========================================================= */
+.modern-attach-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.modern-attach-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #4f46e5;
+  border-color: #cbd5e1;
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 3px 8px rgba(79, 70, 229, 0.12);
+}
+
+.modern-attach-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.modern-attach-btn.has-file {
+  background: #eef2ff;
+  border-color: #818cf8;
+  color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.attach-btn-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4f46e5;
+  box-shadow: 0 0 0 2px #ffffff;
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+  0% { transform: scale(0.95); opacity: 0.9; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.9; }
+}
+
+.modern-attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* FILE PREVIEW CONTAINER BAR */
+.attached-file-preview-bar {
+  padding: 0 2px 8px 2px;
+  display: flex;
+  align-items: center;
+  animation: chip-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes chip-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* SLEEK GLASSMORPHIC CHIP */
+.attached-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #f8faff 0%, #eef2ff 100%);
+  border: 1.5px solid #c7d2fe;
+  padding: 6px 10px 6px 8px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  max-width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.attached-file-chip:hover {
+  border-color: #a5b4fc;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.14);
+}
+
+.file-chip-icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #4f46e5;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+}
+
+.file-chip-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.file-chip-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e1b4b;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-chip-size {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #6366f1;
+}
+
+.file-chip-remove-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid #e0e7ff;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  margin-left: 4px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.file-chip-remove-btn:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+  transform: scale(1.1);
+}
+
+/* User Message File Tag Badge */
+.user-msg-file-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-file-icon {
+  font-size: 11px;
 }
 
 /* =========================================================

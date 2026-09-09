@@ -5,13 +5,13 @@ import 'react-circular-progressbar/dist/styles.css';
 import '../faculty/FacultyAttendance.css';
 
 export default function StudentAttendance() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [useRange, setUseRange] = useState(true);
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date(); d.setDate(1);
-    return d.toISOString().slice(0,10);
+    return d.toISOString().slice(0, 10);
   });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -71,7 +71,7 @@ export default function StudentAttendance() {
       try {
         const r = await api.studentAttendanceList({});
         setAllRows(r.items || []);
-      } catch {}
+      } catch { }
     }, 60000);
     return () => clearInterval(id);
   }, [useRange, fromDate, toDate, date]);
@@ -105,10 +105,10 @@ export default function StudentAttendance() {
         absent += sc.filter(x => x.status === 'ABSENT').length;
       }
     }
-    const pct = total ? Math.round(((present + onDuty) / total) * 100) : 0;
-    const presentPct = total ? Math.round((present / total) * 100) : 0;
-    const onDutyPct = total ? Math.round((onDuty / total) * 100) : 0;
-    const absentPct = total ? Math.round((absent / total) * 100) : 0;
+    const pct = total ? Math.round(((present + onDuty) / total) * 10000) / 100 : 0;
+    const presentPct = total ? Math.round((present / total) * 10000) / 100 : 0;
+    const onDutyPct = total ? Math.round((onDuty / total) * 10000) / 100 : 0;
+    const absentPct = total ? Math.round((absent / total) * 10000) / 100 : 0;
     return { total, present, onDuty, absent, pct, presentPct, onDutyPct, absentPct };
   }, [allRows]);
 
@@ -129,7 +129,7 @@ export default function StudentAttendance() {
     }
     const items = [];
     for (const [subject, v] of acc.entries()) {
-      const pct = v.total ? Math.round(((v.present + v.onDuty) / v.total) * 100) : 0;
+      const pct = v.total ? Math.round(((v.present + v.onDuty) / v.total) * 10000) / 100 : 0;
       items.push({ subject, ...v, pct });
     }
     items.sort((a, b) => a.subject.localeCompare(b.subject));
@@ -139,7 +139,7 @@ export default function StudentAttendance() {
   // Range-aware class statistics (date/range + subject filter)
   // Dedup per day by subject, then cap daily count to 7
   const filteredTotals = useMemo(() => {
-    let total=0, present=0, onDuty=0, absent=0;
+    let total = 0, present = 0, onDuty = 0, absent = 0;
     for (const d of (rows || [])) {
       const dailyAll = d?.dailySchedule || [];
       const dailyFiltered = subjectFilter
@@ -162,7 +162,7 @@ export default function StudentAttendance() {
     <div className="attendance-container">
       {/* Header */}
       <div className="attendance-header">
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <h2 className="attendance-title">My Attendance</h2>
             <p className="attendance-subtitle">Overall (all-time) summary and filtered views</p>
@@ -177,7 +177,7 @@ export default function StudentAttendance() {
 
       {/* Filters */}
       <div className="day-view" style={{ marginTop: 16 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div className="date-picker-container">
             <label>Mode</label>
             <select
@@ -346,7 +346,7 @@ export default function StudentAttendance() {
             </thead>
             <tbody>
               {(rows || []).map(d => {
-                const ds = new Date(d.date).toISOString().slice(0,10);
+                const ds = new Date(d.date).toISOString().slice(0, 10);
                 const dailyAll = d.dailySchedule || [];
                 const dailyFiltered = subjectFilter
                   ? dailyAll.filter(x => (x.subject || '').trim() === subjectFilter)
@@ -356,9 +356,9 @@ export default function StudentAttendance() {
                 const bySubjectOnce = uniqueBySubject(dailyFiltered);
                 const dailyCapped = bySubjectOnce.slice(0, 7);
 
-                const present = dailyCapped.filter(x => x.status==='PRESENT').length;
-                const onDuty = dailyCapped.filter(x => x.status==='ON-DUTY').length;
-                const absent = dailyCapped.filter(x => x.status==='ABSENT').length;
+                const present = dailyCapped.filter(x => x.status === 'PRESENT').length;
+                const onDuty = dailyCapped.filter(x => x.status === 'ON-DUTY').length;
+                const absent = dailyCapped.filter(x => x.status === 'ABSENT').length;
                 const total = dailyCapped.length;
                 return (
                   <tr key={d._id || ds}>

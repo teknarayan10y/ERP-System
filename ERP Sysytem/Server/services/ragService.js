@@ -1,5 +1,4 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const KnowledgeChunk = require('../models/KnowledgeChunk');
 
 /**
  * Deterministic local embedding fallback generator (128-dimensional normalized vector)
@@ -83,25 +82,40 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 /**
- * Vector Search: Retrieve Top-K knowledge chunks for a query
+ * In-memory cache of embedded institutional documents
+ */
+let cachedDefaultEmbeddings = null;
+
+async function getDefaultEmbeddings() {
+  if (!cachedDefaultEmbeddings) {
+    cachedDefaultEmbeddings = await Promise.all(DEFAULT_KNOWLEDGE_DOCS.map(async (doc) => {
+      const textToEmbed = `${doc.title}\n${(doc.tags || []).join(' ')}\n${doc.content}`;
+      const embedding = await generateEmbedding(textToEmbed);
+      return { ...doc, embedding };
+    }));
+  }
+  return cachedDefaultEmbeddings;
+}
+
+/**
+ * Vector Search: Retrieve Top-K knowledge documents for a query
+ * Searches institutional documents in-memory.
+ * @param {string} query
+ * @param {number} topK
+ * @param {number} threshold
  */
 async function searchKnowledgeBase(query, topK = 3, threshold = 0.15) {
   try {
     const queryVector = await generateEmbedding(query);
-    const allChunks = await KnowledgeChunk.find({}).lean();
+    const docs = await getDefaultEmbeddings();
 
-    if (!allChunks || allChunks.length === 0) {
-      return [];
-    }
-
-    const scored = allChunks.map((chunk) => {
+    const scored = docs.map((doc) => {
       let score = 0;
-      if (chunk.embedding && chunk.embedding.length === queryVector.length) {
-        score = cosineSimilarity(queryVector, chunk.embedding);
+      if (doc.embedding && doc.embedding.length === queryVector.length) {
+        score = cosineSimilarity(queryVector, doc.embedding);
       } else {
-        // Fallback keyword overlap heuristic if embedding dimensions differ
         const qWords = (query || '').toLowerCase().split(/\s+/).filter(Boolean);
-        const text = `${chunk.title} ${chunk.content} ${(chunk.tags || []).join(' ')}`.toLowerCase();
+        const text = `${doc.title} ${doc.content} ${(doc.tags || []).join(' ')}`.toLowerCase();
         let matchCount = 0;
         for (const w of qWords) {
           if (w.length > 2 && text.includes(w)) matchCount++;
@@ -109,21 +123,19 @@ async function searchKnowledgeBase(query, topK = 3, threshold = 0.15) {
         score = qWords.length > 0 ? matchCount / qWords.length : 0;
       }
       return {
-        id: chunk._id,
-        title: chunk.title,
-        category: chunk.category,
-        content: chunk.content,
-        metadata: chunk.metadata,
+        id: doc.title,
+        title: doc.title,
+        category: doc.category,
+        content: doc.content,
+        metadata: { author: 'Institution' },
+        scope: 'institution',
+        sourceFile: '',
         similarityScore: Math.round(score * 1000) / 1000
       };
     });
 
-    // Sort descending by similarity score
     scored.sort((a, b) => b.similarityScore - a.similarityScore);
-
-    // Return chunks meeting relevance threshold
-    const results = scored.filter((c) => c.similarityScore >= threshold).slice(0, topK);
-    return results;
+    return scored.filter((c) => c.similarityScore >= threshold).slice(0, topK);
   } catch (err) {
     console.error('[RAG Service] Search error:', err.message);
     return [];
@@ -199,25 +211,13 @@ Each academic year consists of two terms: Odd Semester (July to December) and Ev
 ];
 
 /**
- * Seed initial institutional documents with vector embeddings
+ * Pre-warm institutional documents with vector embeddings in memory
  */
 async function seedKnowledgeBase() {
   try {
-    const count = await KnowledgeChunk.countDocuments();
-    if (count === 0) {
-      console.log('[RAG Service] Seeding default institutional knowledge chunks with vector embeddings...');
-      for (const doc of DEFAULT_KNOWLEDGE_DOCS) {
-        const textToEmbed = `${doc.title}\n${doc.tags.join(', ')}\n${doc.content}`;
-        const embedding = await generateEmbedding(textToEmbed);
-        await KnowledgeChunk.create({
-          ...doc,
-          embedding
-        });
-      }
-      console.log(`[RAG Service] Successfully seeded ${DEFAULT_KNOWLEDGE_DOCS.length} knowledge chunks.`);
-    }
+    await getDefaultEmbeddings();
   } catch (err) {
-    console.error('[RAG Service] Seeding error:', err.message);
+    console.error('[RAG Service] Pre-warm error:', err.message);
   }
 }
 

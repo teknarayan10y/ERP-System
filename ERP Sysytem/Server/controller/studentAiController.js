@@ -8,6 +8,44 @@ const Course = require('../models/Course');
 const StudentProfile = require('../models/StudentProfile');
 const User = require('../models/User');
 const { searchKnowledgeBase } = require('../services/ragService');
+const { extractTextFromFile } = require('../services/fileParser');
+
+/**
+ * Universal Schema-Agnostic Field Normalizer
+ */
+function normalizeField(obj, candidateKeys = [], defaultValue = '') {
+  if (!obj || typeof obj !== 'object') return defaultValue;
+  for (const k of candidateKeys) {
+    if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') {
+      return obj[k];
+    }
+  }
+  return defaultValue;
+}
+
+/**
+ * Universal Name Resolver
+ */
+function resolveName(obj, fallback = 'Unknown') {
+  if (!obj) return fallback;
+  if (typeof obj === 'string') return obj.trim() || fallback;
+  const direct = normalizeField(obj, ['name', 'fullName', 'student_name', 'faculty_name', 'title', 'username', 'userName']);
+  if (direct) return direct;
+  const first = normalizeField(obj, ['firstName', 'first_name', 'fname']);
+  const last = normalizeField(obj, ['lastName', 'last_name', 'lname']);
+  const combined = `${first} ${last}`.trim();
+  return combined || fallback;
+}
+
+/**
+ * Universal ID Resolver
+ */
+function resolveIdentifier(obj, fallback = 'N/A') {
+  return normalizeField(obj, [
+    'rollNo', 'rollNumber', 'roll_no', 'regNo', 'registerNumber', 'reg_no', 'regNumber',
+    'usn', 'studentId', 'student_id', 'facultyId', 'faculty_id', 'staffId', 'employeeId', 'code', 'id', '_id'
+  ], fallback);
+}
 
 /**
  * Helper to ensure URLs are properly formatted
@@ -34,19 +72,27 @@ function formatUploadUrl(pathOrUrl) {
 }
 
 /**
- * Helper to fetch aggregated real-time MongoDB context strictly scoped to the student's personal portal
+ * Calculates 2-decimal precision percentage
+ */
+function calcPct(numerator, denominator) {
+  if (!denominator || denominator <= 0) return 0;
+  return Math.round((numerator / denominator) * 10000) / 100;
+}
+
+/**
+ * Helper to fetch aggregated real-time MongoDB context with Universal Dynamic Schema Discovery
  */
 async function getStudentContext(userId) {
   const userObjId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
 
   // 1. Fetch User and Student Profile
   const [user, profile] = await Promise.all([
-    User.findById(userObjId).select('name email role firstName lastName department').lean(),
-    StudentProfile.findOne({ $or: [{ user: userObjId }, { user: String(userId) }] }).lean()
+    User.findById(userObjId).select('name email role firstName lastName department phone').lean().catch(() => null),
+    StudentProfile.findOne({ $or: [{ user: userObjId }, { user: String(userId) }] }).lean().catch(() => null)
   ]);
 
-  const studentBranch = (profile?.branch || profile?.program || user?.department || '').trim();
-  const studentSemester = Number(profile?.semester) || null;
+  const studentBranch = (normalizeField(profile, ['branch', 'department', 'dept', 'program']) || normalizeField(user, ['department', 'dept'], '')).trim();
+  const studentSemester = Number(normalizeField(profile, ['semester', 'sem'])) || null;
 
   // 2. Build course filter scoped to student's department/semester
   const courseQuery = { isActive: { $ne: false } };
@@ -62,39 +108,39 @@ async function getStudentContext(userId) {
     courseQuery.semester = studentSemester;
   }
 
-  // 3. Fetch courses, all attendance documents, marks, and submissions in parallel
-  let [enrolledCourses, attendanceDocs, marks, submissions] = await Promise.all([
+  // 3. Fetch courses, attendance, marks, submissions, and departments in parallel
+  let [enrolledCourses, attendanceDocs, marks, submissions, departmentDocs] = await Promise.all([
     Course.find(courseQuery)
       .populate({ path: 'faculty', select: 'name email firstName lastName' })
       .select('code name credits semester department faculty')
-      .lean(),
+      .lean().catch(() => []),
     Attendance.find({ $or: [{ userId: userObjId }, { userId: String(userId) }] })
       .sort({ date: -1 })
-      .lean(),
+      .lean().catch(() => []),
     Marks.find({ $or: [{ studentId: userObjId }, { studentId: String(userId) }] })
       .populate('courseId', 'code name credits semester department')
-      .lean(),
+      .lean().catch(() => []),
     StudentSubmission.find({ $or: [{ student: userObjId }, { student: String(userId) }] })
       .select('assignment submittedAt note files')
-      .lean()
+      .lean().catch(() => []),
+    mongoose.models.Department ? mongoose.models.Department.find({ isActive: { $ne: false } }).populate('hod', 'name email').lean().catch(() => []) : []
   ]);
 
-  // Fallback if department name slightly differs in courses collection
   if ((!enrolledCourses || enrolledCourses.length === 0) && studentSemester) {
     enrolledCourses = await Course.find({ semester: studentSemester, isActive: { $ne: false } })
       .populate({ path: 'faculty', select: 'name email firstName lastName' })
       .select('code name credits semester department faculty')
-      .lean();
+      .lean().catch(() => []);
   }
 
   const enrolledCourseIds = (enrolledCourses || []).map(c => c._id);
 
-  // 4. Fetch assignments strictly belonging to student's enrolled courses or semester
+  // 4. Fetch assignments
   let assignmentQuery = {};
   if (enrolledCourseIds.length > 0) {
     assignmentQuery = { courseId: { $in: enrolledCourseIds } };
   } else if (studentSemester) {
-    const semCourses = await Course.find({ semester: studentSemester }).select('_id').lean();
+    const semCourses = await Course.find({ semester: studentSemester }).select('_id').lean().catch(() => []);
     if (semCourses.length > 0) {
       assignmentQuery = { courseId: { $in: semCourses.map(c => c._id) } };
     }
@@ -104,14 +150,12 @@ async function getStudentContext(userId) {
     .populate('courseId', 'code name')
     .populate('faculty', 'name firstName lastName email')
     .sort({ dueDate: 1 })
-    .lean();
+    .lean().catch(() => []);
 
-  // Map submitted assignment IDs
   const submittedAssignmentIds = new Set(
     (submissions || []).map(s => String(s.assignment))
   );
 
-  // Categorize assignments into pending & submitted
   const pendingAssignments = [];
   const completedAssignments = [];
 
@@ -119,13 +163,13 @@ async function getStudentContext(userId) {
     const isSubmitted = submittedAssignmentIds.has(String(assign._id));
     let facultyName = '-';
     if (assign.faculty) {
-      facultyName = `${assign.faculty.firstName || ''} ${assign.faculty.lastName || ''}`.trim() || assign.faculty.name || assign.faculty.email || '-';
+      facultyName = resolveName(assign.faculty, '-');
     }
     const item = {
-      id: assign._id,
+      id: String(assign._id),
       title: assign.title,
-      courseCode: assign.courseId?.code || 'N/A',
-      courseName: assign.courseId?.name || 'N/A',
+      courseCode: normalizeField(assign.courseId, ['code', 'courseCode'], 'N/A'),
+      courseName: resolveName(assign.courseId, 'N/A'),
       faculty: facultyName,
       dueDate: assign.dueDate ? new Date(assign.dueDate).toISOString().split('T')[0] : 'No deadline',
       description: assign.description || ''
@@ -138,7 +182,7 @@ async function getStudentContext(userId) {
     }
   });
 
-  // 5. Aggregate attendance across ALL days/records in MongoDB
+  // 5. Aggregate attendance across ALL days/records
   let totalClasses = 0;
   let presentClasses = 0;
   let absentClasses = 0;
@@ -153,14 +197,17 @@ async function getStudentContext(userId) {
       ? rawDate.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
       : '';
 
-    const schedule = (doc.dailySchedule || []).map(s => ({
-      session: s.session || 'FN',
-      subject: s.subject || 'General',
-      status: s.status || 'PRESENT',
-      faculty: s.faculty || '',
-      topic: s.topic || '',
-      date: s.date ? new Date(s.date).toISOString().split('T')[0] : dateStr
-    }));
+    const schedule = (doc.dailySchedule || []).map(s => {
+      const statusNorm = String(s.status || '').toUpperCase();
+      return {
+        session: s.session || 'FN',
+        subject: s.subject || 'General',
+        status: statusNorm === 'P' ? 'PRESENT' : (statusNorm === 'A' ? 'ABSENT' : (statusNorm === 'OD' ? 'ON-DUTY' : statusNorm || 'PRESENT')),
+        faculty: s.faculty || '',
+        topic: s.topic || '',
+        date: s.date ? new Date(s.date).toISOString().split('T')[0] : dateStr
+      };
+    });
 
     const docTotal = typeof doc.totalClasses === 'number' && doc.totalClasses > 0 ? doc.totalClasses : schedule.length;
     const docPresent = typeof doc.presentClasses === 'number' ? doc.presentClasses : schedule.filter(s => s.status === 'PRESENT').length;
@@ -207,10 +254,10 @@ async function getStudentContext(userId) {
   });
 
   const effectivePresent = presentClasses + onDutyClasses;
-  const percentage = totalClasses > 0 ? Math.round((effectivePresent / totalClasses) * 10000) / 100 : 0;
-  const presentPct = totalClasses > 0 ? Math.round((presentClasses / totalClasses) * 10000) / 100 : 0;
-  const onDutyPct = totalClasses > 0 ? Math.round((onDutyClasses / totalClasses) * 10000) / 100 : 0;
-  const absentPct = totalClasses > 0 ? Math.round((absentClasses / totalClasses) * 10000) / 100 : 0;
+  const percentage = calcPct(effectivePresent, totalClasses);
+  const presentPct = calcPct(presentClasses, totalClasses);
+  const onDutyPct = calcPct(onDutyClasses, totalClasses);
+  const absentPct = calcPct(absentClasses, totalClasses);
 
   let safeToMiss = 0;
   let neededTo75 = 0;
@@ -224,7 +271,7 @@ async function getStudentContext(userId) {
 
   const subjectWiseStats = Array.from(subjectMap.values()).map(s => {
     const eff = s.present + s.onDuty;
-    const pct = s.total > 0 ? Math.round((eff / s.total) * 10000) / 100 : 0;
+    const pct = calcPct(eff, s.total);
     return {
       subject: s.subject,
       total: s.total,
@@ -266,21 +313,22 @@ async function getStudentContext(userId) {
     const gp = GRADE_POINTS[m.grade] !== undefined ? GRADE_POINTS[m.grade] : 0;
     totalCredits += credits;
     weightedPoints += (gp * credits);
-    totalScored += (m.total || 0);
+    const mTotal = Number(normalizeField(m, ['total', 'marks', 'score'], 0)) || 0;
+    totalScored += mTotal;
     maxPossible += 100;
 
     return {
-      courseCode: m.courseId?.code || 'N/A',
-      courseName: m.courseId?.name || 'N/A',
+      courseCode: normalizeField(m.courseId, ['code', 'courseCode'], 'N/A'),
+      courseName: resolveName(m.courseId, 'N/A'),
       credits,
-      semesterExam: m.semesterExam || 0,
-      assignmentScore: m.assignment || 0,
-      practicalScore: m.practical || 0,
-      total: m.total || 0,
-      grade: m.grade || 'F',
+      semesterExam: Number(normalizeField(m, ['semesterExam', 'external', 'exam'], 0)) || 0,
+      assignmentScore: Number(normalizeField(m, ['assignment', 'internal1'], 0)) || 0,
+      practicalScore: Number(normalizeField(m, ['practical', 'lab'], 0)) || 0,
+      total: mTotal,
+      grade: normalizeField(m, ['grade'], 'F'),
       gradePoints: gp,
-      semester: m.semester,
-      academicYear: m.academicYear
+      semester: normalizeField(m, ['semester', 'sem']),
+      academicYear: normalizeField(m, ['academicYear', 'year'])
     };
   });
 
@@ -292,58 +340,47 @@ async function getStudentContext(userId) {
     ? (Math.round((totalScored / maxPossible) * 10000) / 100)
     : null;
 
-  // 7. Format courses with faculty names
-  const coursesFormatted = (enrolledCourses || []).map(c => {
-    let facultyName = 'Unassigned';
-    if (c.faculty) {
-      const fn = c.faculty.firstName || '';
-      const ln = c.faculty.lastName || '';
-      facultyName = `${fn} ${ln}`.trim() || c.faculty.name || c.faculty.email || 'Faculty';
-    }
-    return {
-      code: c.code,
-      name: c.name,
-      credits: c.credits,
-      semester: c.semester,
-      department: c.department,
-      faculty: facultyName
-    };
-  });
+  // 7. Format courses
+  const coursesFormatted = (enrolledCourses || []).map(c => ({
+    code: normalizeField(c, ['code', 'courseCode'], 'N/A'),
+    name: resolveName(c, 'Course'),
+    credits: Number(normalizeField(c, ['credits', 'credit'], 3)) || 3,
+    semester: normalizeField(c, ['semester', 'sem'], 'Current'),
+    department: normalizeField(c, ['department', 'dept', 'branch'], 'General'),
+    faculty: resolveName(c.faculty, 'Faculty')
+  }));
 
-  const isProfileComplete = Boolean(profile);
-  const studentName = profile?.firstName
-    ? `${profile?.firstName} ${profile?.lastName || ''}`.trim()
-    : (user?.name || (user?.firstName ? `${user?.firstName} ${user?.lastName || ''}`.trim() : 'Student'));
+  const studentName = resolveName(profile) !== 'Unknown' ? resolveName(profile) : resolveName(user, 'Student');
 
-  // Student Profile details strictly from MongoDB
+  // Student Profile details
   const studentInfo = {
-    isProfileComplete,
+    isProfileComplete: Boolean(profile),
     name: studentName,
     accountEmail: user?.email || null,
-    firstName: profile?.firstName || user?.firstName || null,
-    lastName: profile?.lastName || user?.lastName || null,
-    gender: profile?.gender || null,
-    dob: profile?.dob || null,
-    bloodGroup: profile?.bloodGroup || null,
-    nationality: profile?.nationality || null,
-    email: profile?.email || user?.email || null,
-    phone: profile?.phone || null,
-    altPhone: profile?.altPhone || null,
-    address: profile?.address || null,
-    city: profile?.city || null,
-    state: profile?.state || null,
-    pincode: profile?.pincode || null,
-    registerNumber: profile?.registerNumber || null,
-    rollNo: profile?.rollNo || profile?.studentId || null,
-    studentId: profile?.studentId || null,
-    program: profile?.program || profile?.branch || user?.department || null,
-    branch: profile?.branch || profile?.program || user?.department || null,
-    semester: profile?.semester || (coursesFormatted[0]?.semester ? String(coursesFormatted[0].semester) : null),
-    year: profile?.year || null,
-    section: profile?.section || null,
-    admissionYear: profile?.admissionYear || null,
-    passoutYear: profile?.passoutYear || null,
-    cgpa: profile?.cgpa || calculatedGPA || null,
+    firstName: normalizeField(profile, ['firstName', 'first_name']) || normalizeField(user, ['firstName'], null),
+    lastName: normalizeField(profile, ['lastName', 'last_name']) || normalizeField(user, ['lastName'], null),
+    gender: normalizeField(profile, ['gender', 'sex'], null),
+    dob: normalizeField(profile, ['dob', 'dateOfBirth'], null),
+    bloodGroup: normalizeField(profile, ['bloodGroup', 'blood_group'], null),
+    nationality: normalizeField(profile, ['nationality'], null),
+    email: normalizeField(profile, ['email']) || normalizeField(user, ['email'], null),
+    phone: normalizeField(profile, ['phone', 'mobile', 'contactNo']) || normalizeField(user, ['phone'], null),
+    altPhone: normalizeField(profile, ['altPhone', 'alternatePhone'], null),
+    address: normalizeField(profile, ['address', 'streetAddress'], null),
+    city: normalizeField(profile, ['city'], null),
+    state: normalizeField(profile, ['state'], null),
+    pincode: normalizeField(profile, ['pincode', 'postalCode', 'zip'], null),
+    registerNumber: normalizeField(profile, ['registerNumber', 'regNo', 'reg_no'], null),
+    rollNo: normalizeField(profile, ['rollNo', 'rollNumber', 'roll_no', 'usn', 'studentId'], null),
+    studentId: resolveIdentifier(profile, null),
+    program: normalizeField(profile, ['program', 'degree', 'branch']) || normalizeField(user, ['department'], null),
+    branch: normalizeField(profile, ['branch', 'department', 'dept', 'program']) || normalizeField(user, ['department'], null),
+    semester: normalizeField(profile, ['semester', 'sem'], coursesFormatted[0]?.semester || null),
+    year: normalizeField(profile, ['year', 'academicYear'], null),
+    section: normalizeField(profile, ['section', 'sec'], null),
+    admissionYear: normalizeField(profile, ['admissionYear'], null),
+    passoutYear: normalizeField(profile, ['passoutYear'], null),
+    cgpa: normalizeField(profile, ['cgpa', 'gpa', 'overallCgpa'], calculatedGPA),
     calculatedGPA,
     averagePercentage,
     profileImage: formatUploadUrl(profile?.profileImage),
@@ -356,20 +393,36 @@ async function getStudentContext(userId) {
     codeforces: formatUrl(profile?.codeforces),
     kaggle: formatUrl(profile?.kaggle),
     resumeLink: formatUrl(profile?.resumeLink),
-    aadhaar: profile?.aadhaar || null,
+    aadhaar: normalizeField(profile, ['aadhaar', 'aadhar'], null),
     hobbies: profile?.hobbies || null,
     achievements: profile?.achievements || null,
     remarks: profile?.remarks || null
   };
 
-  console.log('[StudentAI Realtime Context]:', {
-    name: studentInfo.name,
-    attendance: `${attendanceSummary.percentage}% (${attendanceSummary.effectivePresent}/${attendanceSummary.totalClasses} classes across ${dailyRecords.length} recorded days)`,
-    courses: coursesFormatted.length,
-    marks: marksSummary.length,
-    cgpa: studentInfo.cgpa,
-    pendingAssignments: pendingAssignments.length
-  });
+  // 8. Dynamic Auto-Discovery of any other database collections
+  const dynamicDatabaseEntities = {};
+  if (departmentDocs && departmentDocs.length > 0) {
+    dynamicDatabaseEntities.departments = departmentDocs.map(d => ({
+      code: d.code || '',
+      name: d.name || '',
+      description: d.description || '',
+      hodName: resolveName(d.hod, 'N/A'),
+      hodEmail: d.hod?.email || 'N/A'
+    }));
+  }
+
+  try {
+    for (const [modelName, modelRef] of Object.entries(mongoose.models)) {
+      if (!['User', 'FacultyProfile', 'StudentProfile', 'Attendance', 'Marks', 'Assignment', 'StudentSubmission', 'Course', 'Department'].includes(modelName)) {
+        try {
+          const docs = await modelRef.find({}).limit(50).lean();
+          if (docs && docs.length > 0) {
+            dynamicDatabaseEntities[modelName] = docs;
+          }
+        } catch {}
+      }
+    }
+  } catch {}
 
   return {
     studentInfo,
@@ -377,7 +430,8 @@ async function getStudentContext(userId) {
     marks: marksSummary,
     courses: coursesFormatted,
     pendingAssignments,
-    completedAssignments
+    completedAssignments,
+    dynamicDatabaseEntities
   };
 }
 
@@ -411,7 +465,7 @@ function findDailyRecordInQuery(userQuery, dailyRecords = []) {
     return { targetDateLabel: dateStr, record: match, searchedKey: dateStr };
   }
 
-  // 4. Match DD/MM/YYYY or DD-MM-YYYY or D/M/YYYY
+  // 4. Match DD/MM/YYYY or DD-MM-YYYY
   const dmyMatch = q.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
   if (dmyMatch) {
     const day = dmyMatch[1].padStart(2, '0');
@@ -423,7 +477,7 @@ function findDailyRecordInQuery(userQuery, dailyRecords = []) {
     return { targetDateLabel: `${day}/${month}/${year}`, record: match, searchedKey: dateStr };
   }
 
-  // 5. Match Month names (e.g. "1st september", "september 2", "sep 1", "2nd aug")
+  // 5. Match Month names
   const monthNames = [
     { name: 'january', short: 'jan', num: '01' },
     { name: 'february', short: 'feb', num: '02' },
@@ -464,6 +518,7 @@ function findDailyRecordInQuery(userQuery, dailyRecords = []) {
  */
 function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
   const q = (userQuery || '').toLowerCase().trim();
+  const isDetailed = /detail|breakdown|elaborate|full report|complete|in-depth|deep|all stats/i.test(q);
   const att = ctx.attendance;
   const info = ctx.studentInfo;
   const marks = ctx.marks || [];
@@ -481,51 +536,30 @@ function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
   if (dateMatchResult) {
     const { targetDateLabel, record } = dateMatchResult;
     if (!record) {
-      return `📅 No attendance record found for **${targetDateLabel}** in your portal. Either no classes were scheduled, college was closed, or attendance was not marked for that day.`;
+      return `No attendance record found for **${targetDateLabel}**.`;
+    }
+
+    if (!isDetailed) {
+      const statusCounts = [];
+      if (record.presentClasses > 0) statusCounts.push(`${record.presentClasses} Present`);
+      if (record.onDutyClasses > 0) statusCounts.push(`${record.onDutyClasses} On-Duty`);
+      if (record.absentClasses > 0) statusCounts.push(`${record.absentClasses} Absent`);
+      return `**${targetDateLabel}:** ${statusCounts.join(', ') || '0 Classes'} out of **${record.totalClasses}** total classes.`;
     }
 
     const sched = record.schedule || [];
-    const statusCounts = [];
-    if (record.presentClasses > 0) statusCounts.push(`${record.presentClasses} Present`);
-    if (record.onDutyClasses > 0) statusCounts.push(`${record.onDutyClasses} On-Duty`);
-    if (record.absentClasses > 0) statusCounts.push(`${record.absentClasses} Absent`);
-    const statusSummary = statusCounts.join(', ') || '0 Classes';
-
     let sessionList = '';
     if (sched.length > 0) {
-      sessionList = '\n\n**Class Schedule & Session Logs**:\n' + sched.map(s => {
+      sessionList = '\n\n**Session Breakdown**:\n' + sched.map(s => {
         const icon = s.status === 'PRESENT' ? '✅' : (s.status === 'ON-DUTY' ? '🔷' : '❌');
-        const facText = s.faculty ? ` (Faculty: ${s.faculty})` : '';
-        const topicText = s.topic ? ` | Topic: *${s.topic}*` : '';
-        return `• ${icon} **${s.subject}** [${s.session}]: **${s.status}**${facText}${topicText}`;
+        return `• ${icon} **${s.subject}** [${s.session}]: **${s.status}**${s.faculty ? ` (${s.faculty})` : ''}`;
       }).join('\n');
     }
 
-    return `📅 **Attendance for ${targetDateLabel}**:\n\n• **Summary**: **${statusSummary}** out of **${record.totalClasses}** total class(es)${sessionList}`;
+    return `📅 **Attendance for ${targetDateLabel}**:\n\n• **Total Classes**: ${record.totalClasses} (Present: ${record.presentClasses}, Absent: ${record.absentClasses}, On-Duty: ${record.onDutyClasses})${sessionList}`;
   }
 
-  // 3. Historical Attendance Log Queries
-  if (
-    q.includes('recent log') ||
-    q.includes('recent attendance') ||
-    q.includes('daily attendance') ||
-    q.includes('attendance history') ||
-    q.includes('past attendance') ||
-    q.includes('attendance log')
-  ) {
-    if (!att.dailyRecords || att.dailyRecords.length === 0) {
-      return "No historical attendance records found in your portal.";
-    }
-    const historyList = att.dailyRecords.slice(0, 6).map(d => {
-      const presentCount = d.presentClasses + d.onDutyClasses;
-      const icon = d.absentClasses > 0 ? (presentCount > 0 ? '⚠️' : '❌') : '✅';
-      const subjs = (d.schedule || []).map(s => `${s.subject} (${s.status})`).join(', ');
-      return `• ${icon} **${d.date}**: ${presentCount}/${d.totalClasses} Present — ${subjs || 'No subjects recorded'}`;
-    }).join('\n');
-    return `🗓️ **Recent Daily Attendance History**:\n\n${historyList}\n\n**Overall Attendance**: **${att.percentage}%** (${att.effectivePresent}/${att.totalClasses} classes)`;
-  }
-
-  // 4. Attendance Specific Single Queries
+  // 3. Attendance Percentage & Status
   if (
     q.includes('percentage') ||
     q.includes('percent') ||
@@ -537,151 +571,135 @@ function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
     q === 'my attendance'
   ) {
     if (att.totalClasses === 0) {
-      return "You currently have **no attendance records** marked in the portal.";
+      return "You currently have **no attendance records** marked.";
     }
-    return `Your current attendance is **${att.percentage}%** (${att.status}) with **${att.effectivePresent}** attended out of **${att.totalClasses}** total classes.`;
+    if (!isDetailed) {
+      return `Your current attendance is **${att.percentage}%** (${att.status}).`;
+    }
+    return `### 📊 Attendance Breakdown\n\n` +
+      `- **Overall Attendance:** **${att.percentage}%** (${att.status})\n` +
+      `- **Classes Attended:** **${att.effectivePresent}** out of **${att.totalClasses}** (Present: ${att.presentClasses}, On-Duty: ${att.onDutyClasses}, Absent: ${att.absentClasses})\n` +
+      `- **Safe to Miss:** ${att.safeToMiss} classes | **Needed for 75%:** ${att.neededTo75} classes`;
   }
 
   if (q.includes('can i miss') || q.includes('safe to miss') || q.includes('bunk') || q.includes('how many class can i miss')) {
-    if (att.totalClasses === 0) {
-      return "No attendance records are available yet to calculate margin.";
-    }
+    if (att.totalClasses === 0) return "No attendance records available.";
     if (att.percentage >= 75) {
-      return `You can safely miss up to **${att.safeToMiss}** class(es) while maintaining your attendance above the 75% cutoff (Current: **${att.percentage}%**).`;
+      return `You can safely miss up to **${att.safeToMiss}** class(es) while staying above 75% attendance (Current: **${att.percentage}%**).`;
     }
-    return `Your attendance is currently **${att.percentage}%** (Below 75%). You need to attend the next **${att.neededTo75}** consecutive classes to reach 75%.`;
+    return `Your attendance is **${att.percentage}%** (Below 75%). You must attend the next **${att.neededTo75}** consecutive classes to reach 75%.`;
   }
 
   if (q.includes('need to attend') || q.includes('needed to 75') || q.includes('reach 75') || q.includes('attendance shortage')) {
     if (att.percentage >= 75) {
-      return `Your attendance is already **${att.percentage}%** (Above the 75% requirement). You can safely miss up to **${att.safeToMiss}** class(es).`;
+      return `Your attendance is already **${att.percentage}%** (Safe). You can safely miss up to **${att.safeToMiss}** classes.`;
     }
-    return `You need to attend the next **${att.neededTo75}** consecutive class(es) to reach the 75% attendance cutoff (Current: **${att.percentage}%**).`;
-  }
-
-  if (q.includes('classes attended') || q.includes('present class') || q.includes('how many present')) {
-    return `You have attended **${att.effectivePresent}** out of **${att.totalClasses}** classes (${att.presentClasses} Present + ${att.onDutyClasses} On-Duty).`;
-  }
-
-  if (q.includes('absent class') || q.includes('how many absent') || q.includes('missed class')) {
-    return `You have been absent for **${att.absentClasses}** out of **${att.totalClasses}** classes.`;
-  }
-
-  if (q.includes('total class') || q.includes('conducted class')) {
-    return `A total of **${att.totalClasses}** classes have been conducted across your registered courses so far.`;
+    return `You need to attend the next **${att.neededTo75}** consecutive class(es) to reach 75% (Current: **${att.percentage}%**).`;
   }
 
   if (q.includes('subject attendance') || q.includes('subject-wise') || q.includes('subject wise attendance')) {
     if (att.subjectWiseStats.length === 0) {
-      return `No subject-wise attendance breakdown is recorded yet. Overall Attendance: **${att.percentage}%** (${att.effectivePresent}/${att.totalClasses} classes).`;
+      return `No subject-wise attendance recorded. Overall: **${att.percentage}%** (${att.effectivePresent}/${att.totalClasses}).`;
+    }
+    if (!isDetailed) {
+      return att.subjectWiseStats.map(s => `**${s.subject}**: **${s.percentage}%** (${s.status})`).join(' | ');
     }
     const breakdown = att.subjectWiseStats
-      .map(s => `• **${s.subject}**: ${s.percentage}% (${s.present + s.onDuty}/${s.total} classes) - *${s.status}*`)
+      .map(s => `• **${s.subject}**: **${s.percentage}%** (${s.present + s.onDuty}/${s.total} classes) — *${s.status}*`)
       .join('\n');
-    return `📊 **Subject-Wise Attendance Breakdown**:\n\n${breakdown}\n\n**Overall Attendance**: **${att.percentage}%**`;
+    return `📊 **Subject-Wise Attendance**:\n\n${breakdown}\n\n**Overall Attendance**: **${att.percentage}%**`;
   }
 
-  // 5. Marks & Academics Queries
-  if (q.includes('marks') || q.includes('grade') || q.includes('score') || q.includes('exam result')) {
-    if (marks.length === 0) {
-      return `No semester marks have been published in your portal yet.`;
+  // 4. Marks & Academics Queries
+  if (q.includes('marks') || q.includes('grade') || q.includes('score') || q.includes('exam result') || q.includes('gpa') || q.includes('cgpa')) {
+    if (q.includes('cgpa') || q.includes('gpa')) {
+      return `Your current CGPA is **${info.cgpa || 'N/A'}**.`;
+    }
+    if (marks.length === 0) return `No semester marks published yet.`;
+    if (!isDetailed) {
+      return marks.map(m => `**${m.courseName}**: **${m.total}/100** (Grade: **${m.grade}**)`).join(' | ');
     }
     const tableHeader = `| Course | Semester Exam | Assignment | Practical | Total | Grade |\n| :--- | :---: | :---: | :---: | :---: | :---: |\n`;
     const tableRows = marks.map(m => `| **${m.courseName}** (${m.courseCode}) | ${m.semesterExam}/60 | ${m.assignmentScore}/20 | ${m.practicalScore}/20 | **${m.total}/100** | **${m.grade}** |`).join('\n');
-    const cgpaNote = info.cgpa ? `\n\n🎯 **Cumulative GPA / CGPA**: **${info.cgpa}**` : '';
-    return `🎓 **Your Academic Marks & Grades**:\n\n${tableHeader}${tableRows}${cgpaNote}`;
+    return `🎓 **Your Academic Marks & Grades**:\n\n${tableHeader}${tableRows}\n\n🎯 **CGPA**: **${info.cgpa || 'N/A'}**`;
   }
 
-  // 6. Assignments Queries
+  // 5. Assignments Queries
   if (q.includes('assignment') || q.includes('task') || q.includes('homework') || q.includes('submission')) {
-    if (pending.length === 0 && completed.length === 0) {
-      return "You have no active assignments posted at this time.";
-    }
+    if (pending.length === 0 && completed.length === 0) return "You have no active assignments posted.";
     if (q.includes('pending') || q.includes('due') || q.includes('left')) {
-      if (pending.length === 0) {
-        return "🎉 You have **0 pending assignments**! All coursework is up to date.";
+      if (pending.length === 0) return "🎉 You have **0 pending assignments**!";
+      if (!isDetailed) {
+        const list = pending.map(p => `**${p.title}** (Due: ${p.dueDate})`).join(', ');
+        return `You have **${pending.length}** pending assignment(s): ${list}.`;
       }
-      const list = pending.map((p, i) => `${i + 1}. **${p.title}** (${p.courseName}) - *Due: ${p.dueDate}* (Faculty: ${p.faculty})`).join('\n');
-      return `📝 **You have ${pending.length} pending assignment(s)**:\n\n${list}`;
+      const list = pending.map((p, i) => `${i + 1}. **${p.title}** (${p.courseName}) — *Due: ${p.dueDate}* (Faculty: ${p.faculty})`).join('\n');
+      return `📝 **Pending Assignments (${pending.length})**:\n\n${list}`;
     }
-    const pendingList = pending.length > 0
-      ? pending.map(p => `• ⏳ **${p.title}** (${p.courseName}) - Due: ${p.dueDate}`).join('\n')
-      : '• 🎉 *No pending assignments*';
-    const completedList = completed.length > 0
-      ? completed.map(c => `• ✅ **${c.title}** (${c.courseName}) - *Submitted*`).join('\n')
-      : '• *No submissions yet*';
-    return `📚 **Course Assignments Overview**:\n\n**Pending Tasks (${pending.length})**:\n${pendingList}\n\n**Completed Submissions (${completed.length})**:\n${completedList}`;
+    if (!isDetailed) {
+      return `You have **${pending.length}** pending assignment(s) and **${completed.length}** completed submission(s).`;
+    }
+    const pendingList = pending.length > 0 ? pending.map(p => `• ⏳ **${p.title}** (${p.courseName}) - Due: ${p.dueDate}`).join('\n') : '• 🎉 *No pending assignments*';
+    const completedList = completed.length > 0 ? completed.map(c => `• ✅ **${c.title}** (${c.courseName}) - *Submitted*`).join('\n') : '• *No submissions yet*';
+    return `📚 **Coursework Overview**:\n\n**Pending (${pending.length})**:\n${pendingList}\n\n**Completed (${completed.length})**:\n${completedList}`;
   }
 
-  // 7. Courses Queries
+  // 6. Courses Queries
   if (q.includes('course') || q.includes('subject') || q.includes('enrolled')) {
-    if (courses.length === 0) {
-      return `No courses are currently assigned for your department and semester in the database.`;
+    if (courses.length === 0) return `No courses currently assigned.`;
+    if (!isDetailed) {
+      const list = courses.map(c => `**${c.name}** (${c.code})`).join(', ');
+      return `You are enrolled in **${courses.length}** courses: ${list}.`;
     }
-    const list = courses.map((c, i) => `${i + 1}. **${c.name}** (\`${c.code}\`) - Credits: ${c.credits} | Faculty: ${c.faculty}`).join('\n');
+    const list = courses.map((c, i) => `${i + 1}. **${c.name}** (\`${c.code}\`) — Credits: ${c.credits} | Faculty: ${c.faculty}`).join('\n');
     return `📖 **Your Enrolled Courses (Semester ${info.semester || 'Current'})**:\n\n${list}`;
   }
 
-  // 8. Single Profile Field Queries (ONLY return that specific detail)
+  // 7. Single Profile Field Queries
   const singleFieldMap = [
-    { keys: ['cgpa', 'gpa', 'my cgpa', 'what is my cgpa'], answer: `Your current CGPA is **${info.cgpa || 'N/A'}**.` },
+    { keys: ['cgpa', 'gpa', 'my cgpa'], answer: `Your current CGPA is **${info.cgpa || 'N/A'}**.` },
     { keys: ['roll no', 'roll number', 'rollno', 'roll'], answer: `Your Roll Number is **${info.rollNo || 'N/A'}**.` },
     { keys: ['student id', 'studentid'], answer: `Your Student ID is **${info.studentId || 'N/A'}**.` },
     { keys: ['register no', 'register number', 'reg no'], answer: `Your Register Number is **${info.registerNumber || 'N/A'}**.` },
-    { keys: ['email', 'mail', 'email address'], answer: `Your registered email is **${info.email || 'N/A'}**.` },
-    { keys: ['phone', 'mobile', 'contact number', 'phone number'], answer: `Your phone number is **${info.phone || 'N/A'}**.` },
-    { keys: ['blood group', 'bloodgroup', 'blood type'], answer: `Your blood group is **${info.bloodGroup || 'N/A'}**.` },
-    { keys: ['dob', 'date of birth', 'birthday', 'birth date'], answer: `Your Date of Birth is **${info.dob || 'N/A'}**.` },
-    { keys: ['address', 'city', 'state', 'pincode'], answer: `Your address is **${info.address || 'N/A'}**, ${info.city || ''}, ${info.state || ''} ${info.pincode || ''}.` },
-    { keys: ['branch', 'department', 'program', 'degree'], answer: `Your branch/program is **${info.program || info.branch || 'N/A'}**.` },
-    { keys: ['current sem', 'which sem', 'current semester', 'semester', 'sem'], answer: `You are currently in **Semester ${info.semester || 'N/A'}**.` },
-    { keys: ['academic year', 'year'], answer: `Your academic year is **${info.year || 'N/A'}**.` },
-    { keys: ['section'], answer: `Your section is **${info.section || 'N/A'}**.` },
-    { keys: ['photo', 'profile photo', 'avatar', 'picture'], answer: info.profileImage ? `Here is your profile photo:\n\n![Profile Photo](${info.profileImage})` : `No profile photo uploaded in your profile.` },
-    { keys: ['github'], answer: info.github ? `Your GitHub link is [${info.github}](${info.github}).` : `GitHub link not specified.` },
-    { keys: ['linkedin'], answer: info.linkedin ? `Your LinkedIn link is [${info.linkedin}](${info.linkedin}).` : `LinkedIn link not specified.` },
-    { keys: ['leetcode'], answer: info.leetcode ? `Your LeetCode link is [${info.leetcode}](${info.leetcode}).` : `LeetCode link not specified.` },
-    { keys: ['resume'], answer: info.resumeLink ? `Your Resume link is [${info.resumeLink}](${info.resumeLink}).` : `Resume link not specified.` },
+    { keys: ['email', 'mail', 'email address'], answer: `Your email is **${info.email || 'N/A'}**.` },
+    { keys: ['phone', 'mobile', 'contact number'], answer: `Your phone number is **${info.phone || 'N/A'}**.` },
+    { keys: ['blood group', 'bloodgroup'], answer: `Your blood group is **${info.bloodGroup || 'N/A'}**.` },
+    { keys: ['dob', 'date of birth'], answer: `Your Date of Birth is **${info.dob || 'N/A'}**.` },
+    { keys: ['address', 'city', 'state'], answer: `Your address is **${info.address || 'N/A'}**, ${info.city || ''}, ${info.state || ''} ${info.pincode || ''}.` },
+    { keys: ['branch', 'department', 'program'], answer: `Your branch is **${info.program || info.branch || 'N/A'}**.` },
+    { keys: ['semester', 'sem', 'current sem'], answer: `You are in **Semester ${info.semester || 'N/A'}**.` },
     { keys: ['full name', 'my name', 'name', 'who am i'], answer: `Your name is **${info.name || 'Student'}**.` }
   ];
 
-  if (!q.includes('all') && !q.includes('summary') && !q.includes('report') && !q.includes('breakdown') && !q.includes('everything') && !q.includes('profile')) {
-    for (const item of singleFieldMap) {
-      if (item.keys.some(k => q.includes(k))) {
-        return item.answer;
-      }
+  for (const item of singleFieldMap) {
+    if (item.keys.some(k => q.includes(k))) {
+      return item.answer;
     }
   }
 
   // Full Profile Report
-  if (q.includes('profile') || q.includes('full details') || q.includes('all details') || q.includes('summary') || q.includes('everything')) {
-    return `👤 **Complete Student Profile: ${info.name}**\n\n` +
+  if (q.includes('profile') || q.includes('full details') || q.includes('all details')) {
+    return `👤 **Student Profile: ${info.name}**\n\n` +
       `• **Roll Number**: ${info.rollNo || 'N/A'}\n` +
-      `• **Register Number**: ${info.registerNumber || 'N/A'}\n` +
-      `• **Branch / Program**: ${info.program || info.branch || 'N/A'}\n` +
-      `• **Semester / Year**: Semester ${info.semester || 'N/A'} (${info.year || 'N/A'})\n` +
+      `• **Branch**: ${info.program || info.branch || 'N/A'} (Sem ${info.semester || 'N/A'})\n` +
       `• **CGPA**: **${info.cgpa || 'N/A'}**\n` +
       `• **Attendance**: **${att.percentage}%** (${att.status})\n` +
       `• **Email**: ${info.email || 'N/A'}\n` +
-      `• **Phone**: ${info.phone || 'N/A'}\n` +
-      `• **Pending Assignments**: ${pending.length} pending\n` +
-      (info.github ? `• **GitHub**: [${info.github}](${info.github})\n` : '') +
-      (info.linkedin ? `• **LinkedIn**: [${info.linkedin}](${info.linkedin})\n` : '');
+      `• **Pending Assignments**: ${pending.length} pending\n`;
   }
 
-  // 9. Institutional Knowledge Match
+  // 8. Institutional Knowledge Match
   const institutionalMatch = (relevantKnowledge || []).find(k => k.similarityScore >= 0.25);
   if (institutionalMatch) {
     return `📜 **${institutionalMatch.title}**\n\n${institutionalMatch.content}`;
   }
 
-  // 10. Default Contextual Summary
-  return `Here is your current academic summary:\n\n• **Student**: ${info.name} (${info.rollNo || info.email || 'N/A'})\n• **Attendance**: **${att.percentage}%** (${att.effectivePresent}/${att.totalClasses} classes)\n• **CGPA**: **${info.cgpa || 'N/A'}**\n• **Pending Tasks**: **${pending.length}** assignment(s)\n\nAsk me specific questions like *"What is my attendance today?"*, *"Was I present on September 1st?"*, or *"Show my marks"*.`;
+  // 9. Default
+  return `I am your **Student AI Co-Pilot**. Ask me directly for your attendance, marks, assignments, or courses. (Add *"in detail"* for a full breakdown).`;
 }
 
 /**
  * Controller endpoint: POST /api/student/ai/chat
- * Executes Hybrid RAG: Personal Student Portal records (MongoDB) + Institutional Regulations (Vector RAG) + Google Gemini LLM
  */
 exports.chatWithStudentAi = async (req, res) => {
   try {
@@ -690,45 +708,79 @@ exports.chatWithStudentAi = async (req, res) => {
       return res.status(401).json({ message: 'User ID missing in request' });
     }
 
-    const { message } = req.body || {};
+    const message = req.body?.message || '';
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ message: 'Message string is required' });
     }
 
-    // 1. Concurrently fetch Live Structured Student Context + Semantic Vector Knowledge Chunks (Zero Caching)
+    // Parse attached file if present (ChatGPT-style)
+    let attachedFileText = '';
+    let attachedFileName = '';
+    if (req.file) {
+      attachedFileName = req.file.originalname || 'Uploaded File';
+      attachedFileText = await extractTextFromFile(req.file.buffer, req.file.originalname, req.file.mimetype);
+    }
+
+    // 1. Concurrently fetch Live Structured Student Context + Institutional Knowledge
     const [studentContext, relevantKnowledge] = await Promise.all([
       getStudentContext(userId),
-      searchKnowledgeBase(message, 3)
+      searchKnowledgeBase(message, 4, 0.15, { userId: userId, scope: 'student' })
     ]);
 
     let aiReply = '';
     let modelUsed = 'Deterministic Rule Engine (Hybrid RAG)';
-    const sources = (relevantKnowledge || []).map(k => ({
-      title: k.title,
-      category: k.category,
-      score: k.similarityScore
-    }));
+
+    // Include all relevant knowledge: custom student uploads + institutional policy docs
+    const hasKnowledge = (relevantKnowledge || []).length > 0;
+    const customUploads = (relevantKnowledge || []).filter(k => k.scope !== 'institution' && k.scope != null && k.similarityScore >= 0.15);
+    const policyDocs = (relevantKnowledge || []).filter(k => (k.scope === 'institution' || !k.scope) && k.similarityScore >= 0.25);
+
+    const sources = (relevantKnowledge || [])
+      .filter(k => k.similarityScore >= 0.20)
+      .map(k => ({
+        title: k.title,
+        category: k.category,
+        score: k.similarityScore,
+        sourceFile: k.sourceFile || '',
+        scope: k.scope || 'institution'
+      }));
+
+    const knowledgeContextText = hasKnowledge
+      ? [
+          customUploads.length > 0
+            ? '[CUSTOM UPLOADED DATA FROM STUDENT]\n' +
+              customUploads.map((k, i) => `[Dataset ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
+            : null,
+          policyDocs.length > 0
+            ? '[INSTITUTIONAL REGULATIONS & POLICIES]\n' +
+              policyDocs.map((k, i) => `[Policy ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
+            : null
+        ].filter(Boolean).join('\n\n')
+      : 'No matching knowledge documents found.';
 
     // 2. Invoke Google Gemini LLM
     if (process.env.GEMINI_API_KEY) {
       const candidates = [
         process.env.GEMINI_MODEL,
-        'gemini-2.5-flash',
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
+        'gemini-3.5-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-lite-latest',
+        'gemini-3.6-flash',
         'gemini-flash-latest'
       ].filter(Boolean);
 
       const uniqueModels = [...new Set(candidates)];
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-      const knowledgeContextText = (relevantKnowledge || []).length > 0
-        ? relevantKnowledge.map((k, i) => `[INSTITUTIONAL REGULATION ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
-        : 'No specific institutional policy document matched.';
-
       const hybridPrompt = `
-You are the dedicated AI Assistant for the Student Portal.
-Your scope of authority is STRICTLY BOUNDED to the personal portal records of the logged-in student, and relevant institutional student regulations.
+You are Student AI, the dedicated intelligent Academic Assistant for the logged-in student.
+Your scope of authority is strictly bounded to the personal portal records of the logged-in student and institutional academic regulations.
+
+==================================================
+[CRITICAL RULE: NATURAL TONE - ZERO DATABASE META TALK]
+==================================================
+- NEVER use phrases like "The database contains...", "In the database...", "According to the database...", "The database has...".
+- Speak directly, concisely, and naturally to the student.
 
 ==================================================
 [1. LOGGED-IN STUDENT PORTAL DATABASE CONTEXT (Live MongoDB - Zero Caching)]
@@ -736,50 +788,54 @@ ${JSON.stringify(studentContext, null, 2)}
 ==================================================
 
 ==================================================
-[2. RETRIEVED STUDENT REGULATIONS & POLICIES (Vector RAG)]
+[2. KNOWLEDGE BASE — CUSTOM UPLOADS & STUDENT REGULATIONS (Vector RAG)]
 ${knowledgeContextText}
 ==================================================
+${attachedFileText ? `
+==================================================
+[3. ATTACHED FILE: "${attachedFileName}"]
+The student has attached a file. Here is the FULL content — answer ANY question about it:
 
+${attachedFileText}
+==================================================
+` : ''}
 [STUDENT QUERY]
 "${message}"
 
-[STRICT SCOPE & PRECISION RULES - ABSOLUTE PRIORITY]
-1. DEFAULT TO ONLY THE EXACT DETAIL ASKED (CRITICAL):
-   - Unless the student explicitly asks for "full details", "complete report", "detailed breakdown", "summary", or "everything", you MUST ONLY answer with the EXACT single detail requested.
-   - DO NOT dump other metrics, do not add unsolicited advice, and do not provide full profile or attendance sheets.
-   - Examples:
-     • Question: "What is my attendance percentage?" -> Answer ONLY: "Your current attendance is **84.5%** (Safe / Above 75%)."
-     • Question: "What is my CGPA?" -> Answer ONLY: "Your current CGPA is **8.75**."
-     • Question: "What is my roll number?" -> Answer ONLY: "Your Roll Number is **21CS101**."
-     • Question: "What is my email?" -> Answer ONLY: "Your registered email is **student@example.com**."
-     • Question: "What is my branch / department?" -> Answer ONLY: "Your branch is **Computer Science and Engineering**."
-     • Question: "What is my semester?" -> Answer ONLY: "You are currently in **Semester 6**."
-     • Question: "How many classes can I safely miss?" -> Answer ONLY: "You can safely miss up to **2** class(es) while maintaining 75% attendance."
-     • Question: "How many assignments are pending?" -> Answer ONLY: "You have **2** pending assignment(s)."
-     • Question: "Show my profile photo" -> Answer ONLY: "Here is your profile photo:\n\n![Profile Photo](profileImage_URL)"
-     • Question: "Show my GitHub" -> Answer ONLY: "Your GitHub link is [URL](URL)."
+[CRITICAL INSTRUCTION: CONCISE BY DEFAULT — DETAILS ONLY WHEN EXPLICITLY ASKED]
+1. DEFAULT CONCISE MODE (WHEN USER DID NOT SAY "IN DETAIL"):
+   - Unless the student explicitly asks with words like "in detail", "detailed", "breakdown", "full report", or "give complete details":
+   - Output ONLY the direct, crisp 1-2 sentence answer containing only the requested number/fact/status.
+   - Do NOT output extra unrequested breakdown tables, session lists, subject lists, contact details, or biographical summaries.
+   - Examples of DEFAULT CONCISE responses:
+     * Question: "What is my attendance percentage?" -> Answer: "Your current attendance is **84.50%** (Safe / Above 75%)."
+     * Question: "What is my CGPA?" -> Answer: "Your current CGPA is **8.75**."
+     * Question: "What is my roll number?" -> Answer: "Your Roll Number is **21CS101**."
+     * Question: "What is my email?" -> Answer: "Your registered email is **student@example.com**."
+     * Question: "What is my branch / department?" -> Answer: "Your branch is **Computer Science and Engineering**."
+     * Question: "What is my semester?" -> Answer: "You are currently in **Semester 6**."
+     * Question: "How many classes can I safely miss?" -> Answer: "You can safely miss up to **2** class(es) while maintaining 75% attendance."
+     * Question: "How many assignments are pending?" -> Answer: "You have **2** pending assignment(s)."
+     * Question: "What are my marks in DBMS?" -> Answer: "Your DBMS marks are **85/100** (Grade: **A+**)."
 
-2. SPECIFIC DATE OR RELATIVE DAY QUERIES (TODAY, YESTERDAY, SPECIFIC DATES):
-   - When the student asks about attendance or schedule on a specific date (e.g. "today", "yesterday", "2026-09-01", "on September 1st", "on Monday"):
-   - Look up that date in \`attendance.dailyRecords\`.
-   - If found, provide the exact session-by-session breakdown: date, total classes, status counts (Present/Absent/On-Duty), session (FN/AN), subject name, status (PRESENT/ABSENT/ON-DUTY), faculty name, and topic covered.
-   - If not found in \`attendance.dailyRecords\`, state clearly:
-     "No attendance record is found for **[Date]** in your portal. Either no classes were scheduled or attendance was not marked for that day."
+2. DETAILED MODE (ONLY WHEN EXPLICITLY ASKED FOR "IN DETAIL" / "DETAILED" / "BREAKDOWN"):
+   - When and ONLY when the student explicitly asks with words like "in detail", "detailed breakdown", "full report", "give complete details":
+   - Provide the complete structured markdown tables, subject-by-subject attendance stats, date-by-date session logs, and class performance distributions.
 
-3. REAL-TIME SYNCHRONIZATION & ZERO CACHING:
-   - You are directly connected to live MongoDB records without any delay or cache.
-   - Whenever faculty or admin updates attendance, marks, or assignments, the new records are reflected instantly. Always base answers on the latest numbers in the database context.
+3. STRICT CATEGORY SCOPING (NO EXTRA DATA):
+   - Asking for attendance -> give ONLY attendance.
+   - Asking for marks -> give ONLY marks.
+   - Asking for assignments -> give ONLY assignments.
+   - Never add conversational fluff, greeting loops, or unnecessary filler.
 
-4. FULL DETAILS ONLY WHEN EXPLICITLY ASKED:
-   - ONLY provide a complete multi-field breakdown or full summary when the student explicitly uses words like: "give full details", "show all details", "full report", "detailed breakdown", "complete summary", or "everything".
+4. 2-DECIMAL ATTENDANCE PERCENTAGE PRECISION:
+   - Always format percentages with exact 2-decimal accuracy (e.g. **66.67%**, **82.35%**, **75.00%**). Never round 66.67% to 67%.
 
-5. PORTAL ISOLATION & SECURITY:
-   - You can ONLY access this logged-in student's records.
-   - If asked about other students, faculty private details, administrative settings, or faculty salaries, decline politely:
-     "I can only access and assist with information related to your personal Student Portal and academic records."
+5. GROUNDING IN DATABASE CONTEXT:
+   - Base every number, name, and metric directly on the provided live MongoDB context. Never invent or hallucinate data.
 
-6. GROUNDING: Provide exact numbers and metrics from MongoDB context. Never hallucinate.
-7. FORMATTING: Use clean, professional Markdown with bold highlights.
+6. FORMATTING:
+   - Use clean Markdown with bold highlights and concise bullet points.
 `;
 
       let generated = false;

@@ -283,8 +283,37 @@ adminRevokeSession: (sessionId) =>
 studentMySubmission: (assignmentId) =>
   request(`/student/assignments/${encodeURIComponent(assignmentId)}/submissions/me`, { method: 'GET' }),
 
-// Student AI Assistant
-studentAiChat: (message) =>
-  request('/student/ai/chat', { method: 'POST', body: JSON.stringify({ message }) }),
+// Student AI Assistant — supports optional file attachment (ChatGPT-style)
+studentAiChat: (message, file) => {
+  if (file) {
+    const fd = new FormData();
+    fd.append('message', message);
+    fd.append('file', file);
+    return request('/student/ai/chat', { method: 'POST', body: fd });
+  }
+  return request('/student/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+},
+
+// Faculty AI Assistant — supports optional file attachment
+facultyAiChat: (message, file) => {
+  if (file) {
+    const fd = new FormData();
+    fd.append('message', message);
+    fd.append('file', file);
+    return request('/faculty/ai/chat', { method: 'POST', body: fd });
+  }
+  return request('/faculty/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+},
+
+// Admin AI Assistant — supports optional file attachment
+adminAiChat: (message, file) => {
+  if (file) {
+    const fd = new FormData();
+    fd.append('message', message);
+    fd.append('file', file);
+    return request('/admin/ai/chat', { method: 'POST', body: fd });
+  }
+  return request('/admin/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+}
 };
 

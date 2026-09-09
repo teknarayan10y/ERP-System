@@ -79,7 +79,7 @@ export default function FacultyDashboard() {
         total += t;
         attended += (p + od);
       }
-      const rangePct = total ? Math.round((attended / total) * 100) : 0;
+      const rangePct = total ? Math.round((attended / total) * 10000) / 100 : 0;
       const todayPct = Number(totals.pct) || 0;
       setAverageAttendance(rangePct || todayPct);
 

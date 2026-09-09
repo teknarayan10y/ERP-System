@@ -21,6 +21,9 @@ CampusOS unifies **Administrative Governance**, **Faculty Academic Workflows**, 
 9. [Technology Stack](#️-technology-stack)
 10. [Getting Started & Installation](#-getting-started--installation)
 
+11. [Project Roadmap & Sprint Timeline](#-project-roadmap--sprint-timeline)
+12. [Conclusion & Future Targets](#-conclusion--future-targets)
+
 ---
 
 ## 🌟 System Overview & Architecture
@@ -33,6 +36,7 @@ CampusOS solves the fragmentation of modern college administrative operations by
                                   └─────────────────────────────────────────────────────────┘
                                                                │
                  ┌─────────────────────────────┼─────────────────────────────┐
+                 
                  ▼                             ▼                             ▼
    ┌───────────────────────────┐ ┌───────────────────────────┐ ┌───────────────────────────┐
    │    👑 Admin Portal        │ │   👨‍🏫 Faculty Portal       │ │    🎓 Student Portal       │
@@ -253,10 +257,11 @@ CampusOS uses direct, real-time database queries on every action:
 | `GET` | `/api/profile/me` | Student | Fetch student profile records |
 | `PUT` | `/api/profile/me` | Student | Update student profile & social handles |
 
-### 🤖 Student AI & RAG
+### 🤖 AI Assistants & Hybrid RAG
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/student/ai/chat` | Student | Scoped Hybrid RAG AI chat with live MongoDB & vector policies |
+| `POST` | `/api/student/ai/chat` | Student | Scoped Hybrid RAG AI chat with live MongoDB student records |
+| `POST` | `/api/faculty/ai/chat` | Faculty | Scoped Hybrid RAG AI chat for faculty course management & student absentees/marks/submissions |
 
 ### 📊 Academic & Faculty Operations
 | Method | Endpoint | Access | Description |

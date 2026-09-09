@@ -13,6 +13,7 @@ import {
   FaSignOutAlt,
 } from "react-icons/fa";
 import { api } from "../../auth/api";
+import AdminAiChat from "./AdminAiChat";
 import "../student/StudentDashboard.css"; // 👈 reuse SAME CSS
 
 export default function AdminLayout() {
@@ -201,6 +202,9 @@ export default function AdminLayout() {
         </div>
 
       </main>
+
+      {/* Modern Admin AI Co-Pilot Floating Assistant */}
+      <AdminAiChat />
     </div>
   );
 }
