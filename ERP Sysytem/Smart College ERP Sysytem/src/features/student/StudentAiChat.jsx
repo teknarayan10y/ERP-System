@@ -37,6 +37,9 @@ const CATEGORIES = [
 
 const ALL_QUICK_CHIPS = [
   { cat: 'attendance', label: '📊 Attendance Percentage', query: 'What is my attendance percentage?' },
+  { cat: 'attendance', label: '🔮 30-Day Forecast & Velocity', query: 'What is my 30-day attendance forecast and velocity trajectory?' },
+  { cat: 'attendance', label: '💡 How to Improve Attendance & CGPA', query: 'How can I improve my attendance percentage and CGPA?' },
+  { cat: 'academics', label: '📝 Generate Practice Questions from Syllabus', query: 'Generate quick practice quiz questions based on my syllabus with answer keys and explanations' },
   { cat: 'attendance', label: '📅 Today\'s Attendance', query: 'What is my attendance status for today?' },
   { cat: 'attendance', label: '🗓️ Yesterday\'s Attendance', query: 'What was my attendance yesterday?' },
   { cat: 'attendance', label: '💡 Safe Classes Margin', query: 'How many classes can I safely miss?' },
@@ -54,7 +57,7 @@ const ALL_QUICK_CHIPS = [
 const INITIAL_MESSAGE = {
   id: 'init-msg',
   sender: 'ai',
-  text: `👋 **Welcome to Student AI!**\n\nI am your **AI Academic Co-Pilot**, connected in real-time to your Student Portal. Ask me anything by typing or speaking through your microphone!`,
+  text: `👋 **Welcome to Student AI!**\n\nI am your **AI Academic Co-Pilot**, connected in real-time to your Student Portal. Ask me about your **attendance**, **CGPA**, **assignments**, or **attach your syllabus (PDF, Word, TXT)** using the paperclip icon 📎 to generate instant practice exam questions!`,
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   sources: []
 };

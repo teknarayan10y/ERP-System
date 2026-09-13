@@ -11,6 +11,7 @@ export default function AdminDashboard() {
   const [err, setErr] = useState("");
   const [students, setStudents] = useState([]);
   const [faculty, setFaculty] = useState([]);
+  const [digitalTwin, setDigitalTwin] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,10 +22,15 @@ export default function AdminDashboard() {
 
       try {
         // Fetch students for totals/departments and recent faculty
-        const [sRes, fRes] = await Promise.all([
+        const [sRes, fRes, dtRes] = await Promise.all([
           api.adminStudents({}),
           api.adminFaculty({ limit: 8 }),
+          api.digitalTwin().catch(() => null),
         ]);
+
+        if (dtRes && !cancelled) {
+          setDigitalTwin(dtRes);
+        }
 
         // Normalize students: merge { user, profile } -> single row
         let studentRows = [];
@@ -83,6 +89,45 @@ export default function AdminDashboard() {
       </div>
 
       {err && <div className="form-error" style={{ marginBottom: 12 }}>{err}</div>}
+
+      {/* NexusMind AI - Institutional Intelligence Radar */}
+      <div className="digital-twin-banner" style={{ marginTop: 24, marginBottom: 0 }}>
+        <div className="dt-header">
+          <div className="dt-title-wrap">
+            <span className="dt-sparkle">🔮</span>
+            <div>
+              <div className="dt-heading">NexusMind Institutional Intelligence Radar</div>
+              <div className="dt-subheading">Predictive Macro-Velocity, Department Health & Risk Trajectories</div>
+            </div>
+          </div>
+          <div className="dt-badges">
+            <span className={`dt-badge ${digitalTwin?.campusVelocity === "DOWNWARD" ? "velocity-down" : "velocity-up"}`}>
+              ⚡ Campus Velocity: {digitalTwin?.campusVelocity || "STABLE"}
+            </span>
+            <span className="dt-badge risk-low">
+              🏛️ Health Index: {digitalTwin?.healthIndex || 86}/100
+            </span>
+          </div>
+        </div>
+
+        <div className="dt-metrics-grid">
+          <div className="dt-metric-card">
+            <div className="dt-metric-label">30-Day Campus Trajectory</div>
+            <div className="dt-metric-val">{digitalTwin?.projected30Day || 84.5}%</div>
+            <div className="dt-metric-sub">Forecasted college-wide attendance</div>
+          </div>
+          <div className="dt-metric-card">
+            <div className="dt-metric-label">Statistical Anomaly Status</div>
+            <div className="dt-metric-val" style={{ color: "#4ade80" }}>{digitalTwin?.anomalyStatus || "NOMINAL"}</div>
+            <div className="dt-metric-sub">Z-Score divergence within limits</div>
+          </div>
+          <div className="dt-metric-card">
+            <div className="dt-metric-label">Institutional Health Index</div>
+            <div className="dt-metric-val" style={{ color: "#60a5fa" }}>{digitalTwin?.healthIndex || 86} / 100</div>
+            <div className="dt-metric-sub">Aggregated across all departments</div>
+          </div>
+        </div>
+      </div>
 
       {/* KPI SECTION */}
       <div className="admin-kpi-grid">

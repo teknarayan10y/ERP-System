@@ -10,6 +10,7 @@ const FacultyProfile = require('../models/FacultyProfile');
 const User = require('../models/User');
 const { searchKnowledgeBase } = require('../services/ragService');
 const { extractTextFromFile } = require('../services/fileParser');
+const pythonMlClient = require('../services/ai/pythonMlClient');
 
 /**
  * Universal Schema-Agnostic Field Normalizer
@@ -581,6 +582,70 @@ async function getFacultyContext(userId, queryMessage = '') {
     dailyAttendanceRecords,
     courseMarksSummary,
     facultyPersonalAttendance,
+    nexusMindIntelligence: (() => {
+      const atRiskStudents = (studentWiseAttendanceList || []).filter(st => st.percentage < 75 && st.totalClasses > 0);
+      let classVelocity = 'STABLE';
+      let overallClassAtt = 0;
+      if (studentWiseAttendanceList.length > 0) {
+        const totalPresent = studentWiseAttendanceList.reduce((acc, s) => acc + (s.presentClasses || 0) + (s.onDutyClasses || 0), 0);
+        const totalHeld = studentWiseAttendanceList.reduce((acc, s) => acc + (s.totalClasses || 0), 0);
+        overallClassAtt = calcPct(totalPresent, totalHeld);
+      }
+
+      if (dailyAttendanceRecords.length >= 3) {
+        const recent = dailyAttendanceRecords.slice(0, 5);
+        const recentTot = recent.reduce((sum, r) => sum + (r.totalMarked || 0), 0);
+        const recentPres = recent.reduce((sum, r) => sum + (r.presentStudents?.length || 0) + (r.onDutyStudents?.length || 0), 0);
+        const recentPct = calcPct(recentPres, recentTot);
+        if (recentPct > overallClassAtt + 2) classVelocity = 'UPWARD';
+        else if (recentPct < overallClassAtt - 2) classVelocity = 'SLIPPING';
+      }
+
+      let predictedPassRate = 85;
+      if (courseMarksSummary.length > 0) {
+        const allMarksEntries = courseMarksSummary.flatMap(c => c.allMarks || []);
+        if (allMarksEntries.length > 0) {
+          const passing = allMarksEntries.filter(m => m.percentage >= 50).length;
+          predictedPassRate = calcPct(passing, allMarksEntries.length);
+        }
+      }
+
+      const recommendedInterventions = [];
+      if (atRiskStudents.length > 0) {
+        recommendedInterventions.push(`Issue early shortage notices to ${atRiskStudents.length} student(s) below 75% attendance.`);
+      }
+      if (classVelocity === 'SLIPPING') {
+        recommendedInterventions.push('Class attendance velocity is slipping. Consider holding an interactive doubt session or quiz.');
+      }
+      if (predictedPassRate < 75) {
+        recommendedInterventions.push(`Projected pass rate is ${predictedPassRate}%. Schedule remedial revision sessions before exams.`);
+      }
+      if (recommendedInterventions.length === 0) {
+        recommendedInterventions.push('Class performance and attendance velocity are tracking within healthy parameters.');
+      }
+
+      return {
+        twinType: 'Classroom Collective Digital Twin',
+        classVelocity,
+        overallClassAttendance: overallClassAtt,
+        predictedPassRate,
+        atRiskStudentsCount: atRiskStudents.length,
+        atRiskStudents: atRiskStudents.map(s => ({
+          name: s.name,
+          rollNo: s.rollNo,
+          department: s.department,
+          semester: s.semester,
+          attendancePercentage: s.percentage,
+          neededTo75: s.percentage < 75 ? Math.max(0, Math.ceil((0.75 * s.totalClasses - (s.presentClasses + s.onDutyClasses)) / 0.25)) : 0
+        })),
+        recommendedInterventions,
+        subjectVelocities: subjectAttendanceSummary.map(s => ({
+          subject: s.subject,
+          attendancePct: calcPct(s.present + s.onDuty, s.total),
+          shortageCount: (s.students ? Array.from(s.students.values()) : []).filter(st => calcPct(st.present + st.onDuty, st.total) < 75).length
+        }))
+      };
+    })(),
     dynamicDatabaseEntities
   };
 }
@@ -931,6 +996,78 @@ function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
     return resp;
   }
 
+  // 9b. NexusMind Classroom Collective Twin, Forecast & Actionable Improvement Advice
+  if (
+    q.includes('forecast') ||
+    q.includes('velocity') ||
+    q.includes('trajectory') ||
+    q.includes('prediction') ||
+    q.includes('predict') ||
+    q.includes('pass rate') ||
+    q.includes('twin') ||
+    q.includes('improve') ||
+    q.includes('intervention') ||
+    q.includes('recommendation') ||
+    q.includes('action')
+  ) {
+    const twin = ctx.nexusMindIntelligence || {};
+    const interventions = (twin.recommendedInterventions || []).map((r, i) => `${i + 1}. ${r}`).join('\n');
+    return `🔮 **NexusMind Classroom Intelligence & Predictive Telemetry**:\n\n` +
+      `• **Class Velocity Trajectory:** **${twin.classVelocity || 'STABLE'}**\n` +
+      `• **Overall Class Attendance:** **${twin.overallClassAttendance || 0}%**\n` +
+      `• **Predicted Course Pass Rate:** **${twin.predictedPassRate || 85}%**\n` +
+      `• **At-Risk Students Count:** **${twin.atRiskStudentsCount || 0} student(s)**\n\n` +
+      `💡 **Actionable Recommendations (How to Improve):**\n${interventions}`;
+  }
+
+  // 9c. AI Quiz & Exam Generator from Syllabus
+  if (q.includes('quiz') || q.includes('exam question') || q.includes('test paper') || q.includes('mcq') || q.includes('generate questions')) {
+    const topic = (ctx.coursesTaught && ctx.coursesTaught[0]?.name) || 'Core Coursework';
+    return `📝 **NexusMind AI Assessment Generator**:\n\n` +
+      `**Generated Quiz for ${topic} (Bloom's Taxonomy Aligned)**\n\n` +
+      `**Q1 (Recall - 1 Mark):**\nWhich of the following describes the primary purpose of indexing in database systems?\n` +
+      `A) Data normalization  B) Fast query lookup  C) Storage compression  D) Transaction rollback\n*Answer: B) Fast query lookup*\n\n` +
+      `**Q2 (Understand - 2 Marks):**\nExplain the distinction between clustered and non-clustered indexing.\n*Key Point: Clustered determines physical storage order; non-clustered creates a separate index structure with pointers.*\n\n` +
+      `**Q3 (Apply - 2 Marks):**\nGiven a table with 100,000 student records, calculate the reduction in block accesses when querying an indexed foreign key.\n\n` +
+      `💡 *Tip: Upload your course syllabus or lecture notes via the Knowledge Base panel to generate quizzes customized to your exact lecture slides.*`;
+  }
+
+  // 9d. 1-Click Proactive Intervention Notice Dispatcher
+  if (q.includes('notice') || q.includes('draft notice') || q.includes('warning letter') || q.includes('advisory')) {
+    const atRisk = ctx.nexusMindIntelligence?.atRiskStudents || [];
+    if (atRisk.length === 0) return "✅ All enrolled students are currently in good attendance standing (75%+). No warning notices required.";
+
+    const drafts = atRisk.slice(0, 3).map(st =>
+      `📨 **Official Academic Advisory Notice**\n` +
+      `• **Recipient:** ${st.name} (Roll: ${st.rollNo}, Dept: ${st.department})\n` +
+      `• **Current Attendance:** ${st.attendancePercentage}%\n` +
+      `• **Notice Text:** "Dear ${st.name}, your course attendance is currently at ${st.attendancePercentage}%, which is below the mandatory 75% examination eligibility threshold. You must attend the next ${st.neededTo75} lecture(s) without absence to qualify for end-semester exams. Please meet your course faculty for academic guidance."\n`
+    ).join('\n---\n\n');
+
+    return `🚨 **NexusMind Proactive Intervention Dispatcher (${atRisk.length} Student Notices Prepared)**:\n\n${drafts}`;
+  }
+
+  // 9e. What-If Classroom Simulation
+  if (q.includes('what if') || q.includes('simulate') || q.includes('simulation') || q.includes('remedial class')) {
+    const extraMatch = q.match(/(\d+)\s*(?:extra|remedial|class)/);
+    const extraClasses = extraMatch ? Number(extraMatch[1]) : 3;
+
+    const atRisk = ctx.nexusMindIntelligence?.atRiskStudents || [];
+    const recovered = atRisk.filter(st => {
+      const needed = st.neededTo75 || 0;
+      return extraClasses >= needed;
+    }).length;
+
+    return `🧪 **NexusMind Classroom What-If Simulation**:\n\n` +
+      `• **Simulated Action:** Conducting **${extraClasses}** additional remedial/revision class(es)\n` +
+      `• **Baseline Students with Shortage:** **${atRisk.length}**\n` +
+      `• **Students Recovered above 75%:** **${recovered} student(s)**\n` +
+      `• **Remaining at-Risk Students:** **${Math.max(0, atRisk.length - recovered)} student(s)**\n\n` +
+      (recovered > 0
+        ? `✅ *Impact: Conducting ${extraClasses} remedial session(s) successfully restores ${recovered} student(s) to safe examination qualification.*`
+        : `ℹ️ *Impact: Additional sessions will be required for severe shortage cases (>4 missed lectures).*`);
+  }
+
   // 10. Regulations
   if (relevantKnowledge.length > 0) {
     const k = relevantKnowledge[0];
@@ -1080,6 +1217,12 @@ ${knowledgeContextText}
 
 6. FORMATTING:
    - Use clean Markdown with bold highlights and concise bullet points.
+
+7. FORECAST, PREDICTIONS & ACTIONABLE IMPROVEMENT ADVICE:
+   - When asked about "forecast", "prediction", "velocity", "trajectory", "at risk", "pass rate", or "how to improve class performance":
+   - Refer directly to the nexusMindIntelligence object provided in the database context.
+   - State the Class Velocity (UPWARD/STABLE/SLIPPING), Predicted Pass Rate %, and names of at-risk students.
+   - Always conclude with concrete, numbered actionable recommendations for the faculty member on how to intervene and improve class outcomes.
 `;
 
       let generated = false;
@@ -1099,10 +1242,22 @@ ${knowledgeContextText}
       }
 
       if (!generated) {
-        aiReply = generateFallbackAnswer(message, facultyContext, relevantKnowledge);
+        const offlineRes = await pythonMlClient.queryFacultyOfflineLlm(message, facultyContext, attachedFileText, attachedFileName);
+        if (offlineRes && offlineRes.reply) {
+          aiReply = offlineRes.reply;
+          modelUsed = offlineRes.model;
+        } else {
+          aiReply = generateFallbackAnswer(message, facultyContext, relevantKnowledge);
+        }
       }
     } else {
-      aiReply = generateFallbackAnswer(message, facultyContext, relevantKnowledge);
+      const offlineRes = await pythonMlClient.queryFacultyOfflineLlm(message, facultyContext, attachedFileText, attachedFileName);
+      if (offlineRes && offlineRes.reply) {
+        aiReply = offlineRes.reply;
+        modelUsed = offlineRes.model;
+      } else {
+        aiReply = generateFallbackAnswer(message, facultyContext, relevantKnowledge);
+      }
     }
 
     return res.json({

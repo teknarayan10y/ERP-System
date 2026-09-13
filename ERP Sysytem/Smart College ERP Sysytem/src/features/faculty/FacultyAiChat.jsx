@@ -38,6 +38,12 @@ const CATEGORIES = [
 ];
 
 const ALL_QUICK_CHIPS = [
+  { cat: 'attendance', label: '🚨 At-Risk Students Early Warning', query: 'Which students are at risk of shortage and what is our class attendance velocity?' },
+  { cat: 'attendance', label: '📈 Class Forecast & Velocity Trajectory', query: 'What is our class attendance velocity and projected pass rate?' },
+  { cat: 'assignments', label: '📝 Generate 5-Question Quiz on Core Units', query: 'Generate a 5-question multiple choice quiz on core concepts with answer key and explanations' },
+  { cat: 'attendance', label: '📨 Draft Warning Notices for At-Risk Students', query: 'Draft warning notices for all students with attendance below 75% prioritizing urgent cases' },
+  { cat: 'attendance', label: '🧪 What-If Remedial Lecture Simulation', query: 'Simulate What-If scenario: What happens to cohort pass rate if we add 5 remedial classes and recover attendance by 8%?' },
+  { cat: 'marks', label: '💡 How to Improve Class Performance', query: 'How can I improve class attendance and pass rates?' },
   { cat: 'attendance', label: '❓ How Many Absent Today?', query: 'How many students are absent today?' },
   { cat: 'attendance', label: '🚫 Today\'s Class Absentees', query: 'Who is absent today in my classes?' },
   { cat: 'attendance', label: '🗓️ Yesterday\'s Absentees', query: 'Who was absent yesterday?' },

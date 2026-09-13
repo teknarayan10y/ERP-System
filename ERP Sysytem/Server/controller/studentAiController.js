@@ -9,6 +9,7 @@ const StudentProfile = require('../models/StudentProfile');
 const User = require('../models/User');
 const { searchKnowledgeBase } = require('../services/ragService');
 const { extractTextFromFile } = require('../services/fileParser');
+const pythonMlClient = require('../services/ai/pythonMlClient');
 
 /**
  * Universal Schema-Agnostic Field Normalizer
@@ -419,10 +420,73 @@ async function getStudentContext(userId) {
           if (docs && docs.length > 0) {
             dynamicDatabaseEntities[modelName] = docs;
           }
-        } catch {}
+        } catch { }
       }
     }
-  } catch {}
+  } catch { }
+
+  // 9. Personal Digital Twin Calculation & Actionable Improvements
+  let velocityTrajectory = 'STABLE';
+  let projected30DayAttendance = attendanceSummary.percentage;
+  let riskLevel = 'LOW';
+  let riskScore = 15;
+
+  if (attendanceSummary.totalClasses > 0) {
+    const recent = (attendanceSummary.dailyRecords || []).slice(0, 5);
+    if (recent.length >= 2) {
+      const recentTotal = recent.reduce((sum, r) => sum + (r.totalClasses || 0), 0);
+      const recentPres = recent.reduce((sum, r) => sum + ((r.presentClasses || 0) + (r.onDutyClasses || 0)), 0);
+      const recentPct = calcPct(recentPres, recentTotal);
+      if (recentPct > attendanceSummary.percentage + 2) {
+        velocityTrajectory = 'UPWARD';
+      } else if (recentPct < attendanceSummary.percentage - 2) {
+        velocityTrajectory = 'DOWNWARD';
+      }
+      const projected = Math.round(((attendanceSummary.percentage * 0.4) + (recentPct * 0.6)) * 100) / 100;
+      projected30DayAttendance = Math.min(100, Math.max(0, projected));
+    }
+
+    if (attendanceSummary.percentage < 65) {
+      riskLevel = 'CRITICAL';
+      riskScore = 85;
+    } else if (attendanceSummary.percentage < 75) {
+      riskLevel = 'HIGH';
+      riskScore = 65;
+    } else if (attendanceSummary.percentage < 80) {
+      riskLevel = 'MEDIUM';
+      riskScore = 35;
+    } else {
+      riskLevel = 'LOW';
+      riskScore = 10;
+    }
+  }
+
+  const recommendedImprovements = [];
+  if (attendanceSummary.percentage < 75) {
+    recommendedImprovements.push(`Attend the next ${attendanceSummary.neededTo75} consecutive class(es) to cross the mandatory 75% attendance threshold.`);
+  } else if (attendanceSummary.safeToMiss > 0) {
+    recommendedImprovements.push(`Maintain current momentum; you can safely miss up to ${attendanceSummary.safeToMiss} class(es) without falling below 75%.`);
+  }
+  if (pendingAssignments.length > 0) {
+    recommendedImprovements.push(`Submit your pending assignment "${pendingAssignments[0].title}" before ${pendingAssignments[0].dueDate} to secure full internal marks.`);
+  }
+  if (Number(calculatedGPA || 7) < 8.0) {
+    recommendedImprovements.push(`Target at least 45/60 on upcoming semester examinations to elevate your CGPA towards an 8.0+ distinction tier.`);
+  }
+  if (recommendedImprovements.length === 0) {
+    recommendedImprovements.push('Your attendance and grades are in excellent standing. Continue regular class participation.');
+  }
+
+  const personalDigitalTwin = {
+    attendanceVelocity: velocityTrajectory,
+    velocityTrajectory,
+    projected30DayAttendance,
+    riskLevel,
+    riskScore,
+    status: riskLevel === 'LOW' ? 'Optimal Performance' : 'Requires Attention',
+    academicHealthScore: Math.round((Number(calculatedGPA || 7) * 10 * 0.5) + (attendanceSummary.percentage * 0.5)),
+    recommendedImprovements
+  };
 
   return {
     studentInfo,
@@ -431,6 +495,7 @@ async function getStudentContext(userId) {
     courses: coursesFormatted,
     pendingAssignments,
     completedAssignments,
+    personalDigitalTwin,
     dynamicDatabaseEntities
   };
 }
@@ -516,8 +581,9 @@ function findDailyRecordInQuery(userQuery, dailyRecords = []) {
 /**
  * Concise Fallback Answer Generator (when Gemini LLM is unavailable)
  */
-function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
+async function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = [], attachedFileText = '', attachedFileName = '', requestedCount = 5) {
   const q = (userQuery || '').toLowerCase().trim();
+  const safeCount = Math.max(1, Math.min(25, Number(requestedCount) || 5));
   const isDetailed = /detail|breakdown|elaborate|full report|complete|in-depth|deep|all stats/i.test(q);
   const att = ctx.attendance;
   const info = ctx.studentInfo;
@@ -557,6 +623,67 @@ function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
     }
 
     return `📅 **Attendance for ${targetDateLabel}**:\n\n• **Total Classes**: ${record.totalClasses} (Present: ${record.presentClasses}, Absent: ${record.absentClasses}, On-Duty: ${record.onDutyClasses})${sessionList}`;
+  }
+
+  // 2b. Personal Digital Twin, Forecast & How to Improve
+  if (
+    q.includes('forecast') ||
+    q.includes('velocity') ||
+    q.includes('trajectory') ||
+    q.includes('projection') ||
+    q.includes('projected') ||
+    q.includes('digital twin') ||
+    q.includes('twin') ||
+    q.includes('future attendance') ||
+    q.includes('30-day') ||
+    q.includes('30 day') ||
+    q.includes('improve') ||
+    q.includes('how to improve') ||
+    q.includes('boost') ||
+    q.includes('what should i do')
+  ) {
+    const twin = ctx.personalDigitalTwin || {};
+    const attPct = att?.percentage || 0;
+    const improvements = (twin.recommendedImprovements || []).map((imp, i) => `${i + 1}. ${imp}`).join('\n');
+    return `🔮 **Personal Digital Twin Telemetry & Predictive Forecast**:\n\n` +
+      `• **Attendance Velocity:** **${twin.velocityTrajectory || 'STABLE'}**\n` +
+      `• **30-Day Projected Attendance:** **${twin.projected30DayAttendance || attPct}%** (Current: ${attPct}%)\n` +
+      `• **Academic Health Score:** **${twin.academicHealthScore || 85}/100**\n` +
+      `• **Risk Status:** **${twin.status || 'Optimal Performance'}** (Risk Level: ${twin.riskLevel || 'LOW'})\n\n` +
+      `💡 **How to Improve (Actionable Steps)**:\n${improvements}`;
+  }
+
+  // 2c. Syllabus Practice Questions & Quiz Generator (Dynamic Count & Offline Engine)
+  if (
+    q.includes('syllabus') ||
+    q.includes('question') ||
+    q.includes('quiz') ||
+    q.includes('test') ||
+    q.includes('practice') ||
+    q.includes('exam question') ||
+    q.includes('mcq') ||
+    attachedFileText
+  ) {
+    if (
+      q.includes('question') ||
+      q.includes('quiz') ||
+      q.includes('test') ||
+      q.includes('practice') ||
+      q.includes('mcq') ||
+      q.includes('exam') ||
+      q.includes('generate') ||
+      (attachedFileText && (q.includes('ask') || q.includes('tell') || q.includes('create') || q.includes('help')))
+    ) {
+      const topicSource = attachedFileName ? `Uploaded Syllabus (\`${attachedFileName}\`)` : (courses[0]?.name || 'Core Curriculum');
+      try {
+        const quizRes = await pythonMlClient.generateQuiz(attachedFileText, safeCount, topicSource);
+        if (quizRes && quizRes.quizText) {
+          return quizRes.quizText;
+        }
+      } catch (e) {
+        // Fall through to deterministic JS fallback
+      }
+    }
   }
 
   // 3. Attendance Percentage & Status
@@ -713,13 +840,43 @@ exports.chatWithStudentAi = async (req, res) => {
       return res.status(400).json({ message: 'Message string is required' });
     }
 
-    // Parse attached file if present (ChatGPT-style)
+    // Parse attached file if present (any file type: PDF, DOCX, PPTX, images, etc.)
     let attachedFileText = '';
     let attachedFileName = '';
     if (req.file) {
       attachedFileName = req.file.originalname || 'Uploaded File';
+      // extractTextFromFile routes all binary formats through the Python ML sidecar automatically
       attachedFileText = await extractTextFromFile(req.file.buffer, req.file.originalname, req.file.mimetype);
+      console.log(`[StudentAI] 📄 Extracted ${attachedFileText ? attachedFileText.trim().length : 0} chars from "${attachedFileName}" (mime: ${req.file.mimetype})`);
+
+      // If standard extraction returned < 30 chars (e.g. very old scanned PDF or encrypted),
+      // try direct OCR as a last resort
+      if (!attachedFileText || attachedFileText.trim().length < 30) {
+        const ext = (req.file.originalname || '').toLowerCase();
+        if (ext.endsWith('.pdf') || req.file.mimetype === 'application/pdf') {
+          console.log(`[StudentAI] ⚠️  Low text yield. Trying direct OCR for "${attachedFileName}"...`);
+          try {
+            const ocrText = await pythonMlClient.extractPdfTextOcr(req.file.buffer);
+            if (ocrText && ocrText.trim().length > 20) {
+              attachedFileText = ocrText;
+              console.log(`[StudentAI] ✅ Direct OCR extracted ${attachedFileText.length} chars from "${attachedFileName}"`);
+            }
+          } catch (ocrErr) {
+            console.error('[StudentAI] OCR extraction error:', ocrErr.message);
+          }
+        }
+      }
+
+      if (attachedFileText && attachedFileText.trim().length > 20) {
+        console.log(`[StudentAI] ✅ File ready for offline LLM: "${attachedFileName}" (${attachedFileText.trim().length} chars)`);
+      } else {
+        console.warn(`[StudentAI] ⚠️  File "${attachedFileName}" yielded no usable text — LLM will not have file content.`);
+      }
     }
+
+    // Dynamic question count parsing (e.g. "give me 3 questions", "generate 10 questions")
+    const countMatch = message.match(/(\d+)\s*(?:questions?|quiz|mcqs?|items?|problems?|practice)/i) || message.match(/(?:give|generate|create|ask|test|provide)\s*(?:me)?\s*(\d+)/i);
+    const requestedCount = countMatch ? Math.min(25, Math.max(1, parseInt(countMatch[1] || countMatch[2], 10))) : 5;
 
     // 1. Concurrently fetch Live Structured Student Context + Institutional Knowledge
     const [studentContext, relevantKnowledge] = await Promise.all([
@@ -747,15 +904,15 @@ exports.chatWithStudentAi = async (req, res) => {
 
     const knowledgeContextText = hasKnowledge
       ? [
-          customUploads.length > 0
-            ? '[CUSTOM UPLOADED DATA FROM STUDENT]\n' +
-              customUploads.map((k, i) => `[Dataset ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
-            : null,
-          policyDocs.length > 0
-            ? '[INSTITUTIONAL REGULATIONS & POLICIES]\n' +
-              policyDocs.map((k, i) => `[Policy ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
-            : null
-        ].filter(Boolean).join('\n\n')
+        customUploads.length > 0
+          ? '[CUSTOM UPLOADED DATA FROM STUDENT]\n' +
+          customUploads.map((k, i) => `[Dataset ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
+          : null,
+        policyDocs.length > 0
+          ? '[INSTITUTIONAL REGULATIONS & POLICIES]\n' +
+          policyDocs.map((k, i) => `[Policy ${i + 1}: ${k.title}]\n${k.content}`).join('\n\n')
+          : null
+      ].filter(Boolean).join('\n\n')
       : 'No matching knowledge documents found.';
 
     // 2. Invoke Google Gemini LLM
@@ -841,6 +998,20 @@ ${attachedFileText}
    - When asked about "forecast", "future attendance", "30-day projection", "velocity", "trajectory", or "digital twin":
    - Refer directly to the personalDigitalTwin object provided in the student portal context.
    - Mention the Velocity Trajectory (e.g. UPWARD, STABLE, or DOWNWARD), Projected 30-Day Attendance percentage, and Risk Level concisely.
+
+8. ACTIONABLE IMPROVEMENT ADVICE (HOW TO IMPROVE):
+   - When asked "how to improve", "how to raise my attendance", "how to boost my CGPA", or for academic advice:
+   - Provide concrete, numbered, actionable steps from the recommendedImprovements array in personalDigitalTwin.
+   - Specify exactly how many classes to attend to reach 75%, which assignment to submit first, and what target marks to aim for in exams.
+
+9. SYLLABUS PRACTICE QUESTIONS & QUIZ GENERATOR (DYNAMIC COUNT: ${requestedCount} QUESTIONS):
+   - The student has requested ${requestedCount} question(s).
+   - Generate EXACTLY ${requestedCount} high-yield multiple-choice questions based on the attached syllabus text (or their enrolled course topics if no file is attached).
+   - Do NOT force 5 questions if the student asked for a different number. Always generate exactly the ${requestedCount} questions requested.
+   - For every question, format clearly:
+     * Question number (e.g. Q1, Q2... up to Q${requestedCount}) and question text
+     * Options: A), B), C), D)
+     * Correct Answer Key with a clear, concise concept explanation to help them study and master the topic.
 `;
 
       let generated = false;
@@ -860,10 +1031,22 @@ ${attachedFileText}
       }
 
       if (!generated) {
-        aiReply = generateFallbackAnswer(message, studentContext, relevantKnowledge);
+        const offlineRes = await pythonMlClient.queryOfflineLlm(message, studentContext, attachedFileText, attachedFileName);
+        if (offlineRes && offlineRes.reply) {
+          aiReply = offlineRes.reply;
+          modelUsed = offlineRes.model;
+        } else {
+          aiReply = await generateFallbackAnswer(message, studentContext, relevantKnowledge, attachedFileText, attachedFileName, requestedCount);
+        }
       }
     } else {
-      aiReply = generateFallbackAnswer(message, studentContext, relevantKnowledge);
+      const offlineRes = await pythonMlClient.queryOfflineLlm(message, studentContext, attachedFileText, attachedFileName);
+      if (offlineRes && offlineRes.reply) {
+        aiReply = offlineRes.reply;
+        modelUsed = offlineRes.model;
+      } else {
+        aiReply = await generateFallbackAnswer(message, studentContext, relevantKnowledge, attachedFileText, attachedFileName, requestedCount);
+      }
     }
 
     return res.json({

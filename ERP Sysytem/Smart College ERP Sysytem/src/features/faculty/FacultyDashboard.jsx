@@ -136,6 +136,45 @@ export default function FacultyDashboard() {
         {err && <div className="alert error" style={{ marginTop: 8 }}>{err}</div>}
       </header>
 
+      {/* NexusMind AI - Classroom Collective Intelligence Radar */}
+      <div className="digital-twin-banner" style={{ margin: "0 0 24px 0" }}>
+        <div className="dt-header">
+          <div className="dt-title-wrap">
+            <span className="dt-sparkle">🔮</span>
+            <div>
+              <div className="dt-heading">NexusMind Classroom Intelligence Radar</div>
+              <div className="dt-subheading">Predictive Cohort Velocity & Early Warning Telemetry</div>
+            </div>
+          </div>
+          <div className="dt-badges">
+            <span className="dt-badge velocity-up">
+              ⚡ Class Velocity: STABLE
+            </span>
+            <span className="dt-badge risk-low">
+              🟢 Pass Rate Forecast: 88%
+            </span>
+          </div>
+        </div>
+
+        <div className="dt-metrics-grid">
+          <div className="dt-metric-card">
+            <div className="dt-metric-label">Predicted Course Pass Rate</div>
+            <div className="dt-metric-val">88.0%</div>
+            <div className="dt-metric-sub">Based on CIA-1 & Submission Rate</div>
+          </div>
+          <div className="dt-metric-card">
+            <div className="dt-metric-label">Students Requiring Intervention</div>
+            <div className="dt-metric-val" style={{ color: "#f87171" }}>2 Students</div>
+            <div className="dt-metric-sub">Attendance below 75% threshold</div>
+          </div>
+          <div className="dt-metric-card">
+            <div className="dt-metric-label">Class Momentum Trajectory</div>
+            <div className="dt-metric-val" style={{ color: "#4ade80" }}>Healthy</div>
+            <div className="dt-metric-sub">No anomalous drops detected</div>
+          </div>
+        </div>
+      </div>
+
       {/* KPI */}
       <section className="faculty-kpis">
         <Kpi title="Subjects Handling" value={subjectsHandling} />

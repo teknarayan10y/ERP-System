@@ -68,6 +68,7 @@ export const api = {
 
   studentData: ()   => request('/dashboard/student-data'),
   facultyData: ()   => request('/dashboard/faculty-data'),
+  digitalTwin: ()   => request('/dashboard/digital-twin'),
 
   profileGet:    ()   => request('/profile', { method: 'GET' }),
   profilePut:    (b)  => request('/profile', { method: 'PUT', body: JSON.stringify(b) }),

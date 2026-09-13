@@ -11,6 +11,7 @@ const User = require('../models/User');
 const Department = require('../models/Department');
 const { searchKnowledgeBase } = require('../services/ragService');
 const { extractTextFromFile } = require('../services/fileParser');
+const pythonMlClient = require('../services/ai/pythonMlClient');
 
 /**
  * Universal Schema-Agnostic Field Normalizer
@@ -493,7 +494,66 @@ async function getAdminContext(adminUserId) {
     }
   } catch {}
 
-  const dailyCollegeAttendance = Array.from(dailyCollegeAttendanceMap.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  // 10. NexusMind Institutional Digital Twin & Predictive Analytics
+  const atRiskStudents = fullStudentRoster.filter(s => s.attendance.percentage < 75 || Number(s.cgpa || 7) < 5.0);
+
+  let institutionalVelocity = 'STABLE';
+  let projected30DayAttendance = collegeOverallStudentAttendance;
+  if (dailyCollegeAttendance.length >= 3) {
+    const recentDays = dailyCollegeAttendance.slice(0, 5);
+    const recentTotal = recentDays.reduce((sum, d) => sum + (d.totalClasses || 0), 0);
+    const recentPres = recentDays.reduce((sum, d) => sum + (d.presentClasses || 0), 0);
+    const recentPct = calcPct(recentPres, recentTotal);
+    if (recentPct > collegeOverallStudentAttendance + 2) institutionalVelocity = 'UPWARD';
+    else if (recentPct < collegeOverallStudentAttendance - 2) institutionalVelocity = 'DOWNWARD';
+    projected30DayAttendance = Math.round(((collegeOverallStudentAttendance * 0.4) + (recentPct * 0.6)) * 100) / 100;
+  }
+
+  const departmentHealthScores = departmentsSummary.map(d => {
+    const depStudents = fullStudentRoster.filter(s => (s.department || '').toLowerCase() === d.name.toLowerCase() || (s.department || '').toLowerCase() === d.code.toLowerCase());
+    const avgAtt = depStudents.length > 0
+      ? calcPct(depStudents.reduce((sum, s) => sum + s.attendance.percentage, 0), depStudents.length * 100) * 100
+      : 80;
+    const shortageCount = depStudents.filter(s => s.attendance.percentage < 75).length;
+    const healthScore = Math.max(0, Math.min(100, Math.round(avgAtt - (shortageCount * 5))));
+    return {
+      department: d.name,
+      code: d.code,
+      healthScore,
+      status: healthScore >= 75 ? 'Healthy' : (healthScore >= 60 ? 'Moderate Concern' : 'Critical Action Required'),
+      studentCount: depStudents.length,
+      shortageCount
+    };
+  });
+
+  const criticalDepts = departmentHealthScores.filter(d => d.healthScore < 65);
+  const anomalyStatus = criticalDepts.length > 0 ? 'CRITICAL_DEPARTMENT_SHORTAGE_DETECTED' : (atRiskStudents.length > studentUsers.length * 0.2 ? 'ELEVATED_CAMPUS_SHORTAGE' : 'NOMINAL');
+
+  const recommendedPolicyActions = [];
+  if (criticalDepts.length > 0) {
+    recommendedPolicyActions.push(`Issue strategic administrative reviews for ${criticalDepts.map(d => d.department).join(', ')} where department health has fallen below 65.`);
+  }
+  if (institutionalVelocity === 'DOWNWARD') {
+    recommendedPolicyActions.push('Campus-wide attendance momentum is downward. Recommend launching an institutional attendance recovery drive and reviewing timetable density.');
+  }
+  if (atRiskStudents.length > 0) {
+    recommendedPolicyActions.push(`Initiate centralized parent-guardian notifications for ${atRiskStudents.length} student(s) facing exam disqualification due to attendance shortage.`);
+  }
+  if (recommendedPolicyActions.length === 0) {
+    recommendedPolicyActions.push('Institutional operations, department health indices, and attendance velocity are in optimal condition.');
+  }
+
+  const nexusMindIntelligence = {
+    twinType: 'Institutional Digital Twin',
+    institutionalVelocity,
+    projected30DayAttendance,
+    overallAttendance: collegeOverallStudentAttendance,
+    atRiskStudentsCount: atRiskStudents.length,
+    atRiskStudents: atRiskStudents.map(s => ({ name: s.name, rollNo: s.rollNo, department: s.department, attendancePct: s.attendance.percentage, cgpa: s.cgpa })),
+    departmentHealthScores,
+    anomalyStatus,
+    recommendedPolicyActions
+  };
 
   return {
     adminInfo: {
@@ -514,6 +574,7 @@ async function getAdminContext(adminUserId) {
     })),
     assignments: collegeAssignments,
     dailyCollegeAttendance,
+    nexusMindIntelligence,
     dynamicDatabaseEntities
   };
 }
@@ -830,6 +891,75 @@ function generateFallbackAnswer(userQuery, ctx, relevantKnowledge = []) {
     return `📚 **Institution Course Offerings (${courses.length})**:\n\n${list}`;
   }
 
+  // 11b. NexusMind Institutional Digital Twin, Department Health & Prescriptive Guidance
+  if (
+    q.includes('health') ||
+    q.includes('health score') ||
+    q.includes('anomaly') ||
+    q.includes('anomalies') ||
+    q.includes('forecast') ||
+    q.includes('velocity') ||
+    q.includes('trajectory') ||
+    q.includes('projection') ||
+    q.includes('institutional twin') ||
+    q.includes('improve') ||
+    q.includes('policy') ||
+    q.includes('actions') ||
+    q.includes('recommendation')
+  ) {
+    const twin = ctx.nexusMindIntelligence || {};
+    const depts = (twin.departmentHealthScores || []).map(d => `• **${d.department}** (${d.code}): **${d.healthScore}/100** — *${d.status}* (${d.shortageCount} shortages)`).join('\n');
+    const actions = (twin.recommendedPolicyActions || []).map((a, i) => `${i + 1}. ${a}`).join('\n');
+
+    return `🏛️ **NexusMind Institutional Digital Twin & Strategic Analytics**:\n\n` +
+      `• **Campus Attendance Velocity:** **${twin.institutionalVelocity || 'STABLE'}**\n` +
+      `• **Overall College Attendance:** **${twin.overallAttendance || 0}%**\n` +
+      `• **30-Day Projected Attendance:** **${twin.projected30DayAttendance || 0}%**\n` +
+      `• **Statistical Anomaly Status:** **${twin.anomalyStatus || 'NOMINAL'}**\n` +
+      `• **Campus-Wide At-Risk Students:** **${twin.atRiskStudentsCount || 0} student(s)**\n\n` +
+      `🏥 **Department Health Index (0-100)**:\n${depts}\n\n` +
+      `💡 **Actionable Strategic Prescriptions (How to Improve)**:\n${actions}`;
+  }
+
+  // 11c. Interactive What-If Policy & Scenario Simulation
+  if (
+    q.includes('what if') ||
+    q.includes('simulate') ||
+    q.includes('simulation') ||
+    q.includes('hypothetical') ||
+    (q.includes('condonation') && (q.includes('70') || q.includes('relax')))
+  ) {
+    const thresholdMatch = q.match(/(\d{2})%/);
+    const targetThreshold = thresholdMatch ? Number(thresholdMatch[1]) : 70;
+    const holidayMatch = q.match(/(\d+)\s*(?:holiday|day|rain|snow)/);
+    const holidays = holidayMatch ? Number(holidayMatch[1]) : 0;
+
+    const cohort = (ctx.studentRoster || []).map(s => ({
+      name: s.name,
+      rollNo: s.rollNo,
+      totalClasses: s.attendance?.totalClasses || 40,
+      presentClasses: s.attendance?.presentClasses || 28,
+      percentage: s.attendance?.percentage || 70
+    }));
+
+    const prevShortage = cohort.filter(s => s.percentage < 75).length;
+    const simShortage = cohort.filter(s => {
+      const tot = Math.max(1, s.totalClasses - holidays);
+      const pct = Math.round((s.presentClasses / tot) * 100);
+      return pct < targetThreshold;
+    }).length;
+    const retained = Math.max(0, prevShortage - simShortage);
+
+    return `🧪 **NexusMind What-If Scenario Simulation Results**:\n\n` +
+      `• **Simulated Policy Parameter**: Attendance Threshold = **${targetThreshold}%** ${holidays > 0 ? `| Unplanned Holidays = **${holidays} days**` : ''}\n` +
+      `• **Baseline Shortage Students**: **${prevShortage}** (<75%)\n` +
+      `• **Simulated Shortage Students**: **${simShortage}** (<${targetThreshold}%)\n` +
+      `• **Net Students Retained / Saved**: **${retained} student(s)**\n\n` +
+      (retained > 0
+        ? `✅ *Impact Assessment: Relaxing the qualification criteria to ${targetThreshold}% prevents ${retained} student(s) from being debarred from semester examinations.*`
+        : `ℹ️ *Impact Assessment: Parameter adjustment maintains current qualification levels without significant cohort shifts.*`);
+  }
+
   // 12. Institutional Policy Match (only when explicitly relevant or high similarity)
   const isPolicyQuery = /policy|regulation|rule|grading scale|grade scale|minimum attendance|condonation|detention|safe range|exam weightage|how are marks|passing mark|program duration|how many semester/i.test(q);
   const institutionalMatch = (relevantKnowledge || []).find(k => isPolicyQuery ? k.similarityScore >= 0.20 : k.similarityScore >= 0.75);
@@ -992,6 +1122,12 @@ ${attachedFileText}
    - Treat the uploaded data as ground truth for any questions about that content.
    - If an admin uploaded a PDF, CSV, Excel, JSON, or any text file, and asks about it, pull your answer from that uploaded content.
    - Clearly reference the source document name when answering from uploaded data.
+
+9. INSTITUTIONAL TWIN, PREDICTIONS & ACTIONABLE POLICY PRESCRIPTIONS:
+   - When asked about campus forecast, attendance velocity, department health scores, statistical anomalies, or how to improve institutional performance:
+   - Refer directly to the nexusMindIntelligence object provided in the database context.
+   - Present the Department Health ratings (0-100), Campus Velocity, and Anomaly status.
+   - Always conclude with concrete, numbered actionable policy recommendations for the administrative leadership on how to intervene and improve student retention and performance.
 `;
 
       let generated = false;
@@ -1011,10 +1147,22 @@ ${attachedFileText}
       }
 
       if (!generated) {
-        aiReply = generateFallbackAnswer(message, adminContext, relevantKnowledge);
+        const offlineRes = await pythonMlClient.queryAdminOfflineLlm(message, adminContext, attachedFileText, attachedFileName);
+        if (offlineRes && offlineRes.reply) {
+          aiReply = offlineRes.reply;
+          modelUsed = offlineRes.model;
+        } else {
+          aiReply = generateFallbackAnswer(message, adminContext, relevantKnowledge);
+        }
       }
     } else {
-      aiReply = generateFallbackAnswer(message, adminContext, relevantKnowledge);
+      const offlineRes = await pythonMlClient.queryAdminOfflineLlm(message, adminContext, attachedFileText, attachedFileName);
+      if (offlineRes && offlineRes.reply) {
+        aiReply = offlineRes.reply;
+        modelUsed = offlineRes.model;
+      } else {
+        aiReply = generateFallbackAnswer(message, adminContext, relevantKnowledge);
+      }
     }
 
     return res.json({

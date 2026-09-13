@@ -1,6 +1,13 @@
 // Server/services/fileParser.js
-// Shared utility — parse any uploaded file (PDF, CSV, Excel, JSON, TXT, etc.) into plain text
+// Universal file text extractor — supports any file type a student might upload.
+// Binary formats (PDF, DOCX, PPTX, XLSX, images, RTF) are extracted via the Python ML sidecar.
+// Light-weight text formats (CSV, JSON, TXT, MD) are handled directly in Node.
 const path = require("path");
+const http = require("http");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lightweight Node-side parsers (no external deps beyond what is already used)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parseCsvToText(csvText) {
   const lines = csvText.split(/\r?\n/).filter(l => l.trim());
@@ -32,41 +39,133 @@ function parseJsonToText(jsonText) {
   } catch (e) { return jsonText; }
 }
 
-function parseXlsxToText(buffer) {
-  try {
-    const XLSX = require("xlsx");
-    const wb = XLSX.read(buffer, { type: "buffer" });
-    var result = "";
-    wb.SheetNames.forEach(sheetName => {
-      const ws = wb.Sheets[sheetName];
-      const csv = XLSX.utils.sheet_to_csv(ws);
-      result += "\n[Sheet: " + sheetName + "]\n" + parseCsvToText(csv) + "\n";
+// ─────────────────────────────────────────────────────────────────────────────
+// Python ML sidecar call — used for all binary / rich formats
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST to /api/ml/extract-file on the Python sidecar.
+ * @param {Buffer} buffer
+ * @param {string} filename  Original filename (used to infer extension)
+ * @param {string} mimetype  MIME type string
+ * @returns {Promise<string>} Extracted text (empty string on failure)
+ */
+async function extractViaMLSidecar(buffer, filename, mimetype) {
+  return new Promise((resolve) => {
+    const postData = JSON.stringify({
+      fileBase64: buffer.toString("base64"),
+      filename:   filename || "file",
+      mimetype:   mimetype || ""
     });
-    return result.trim();
-  } catch (e) { return ""; }
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port:     8000,
+        path:     "/api/ml/extract-file",
+        method:   "POST",
+        headers: {
+          "Content-Type":   "application/json",
+          "Content-Length": Buffer.byteLength(postData)
+        },
+        timeout: 60000
+      },
+      (res) => {
+        let body = "";
+        res.on("data", chunk => { body += chunk; });
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(body);
+            const text = parsed.text || "";
+            if (text) {
+              console.log(`[FileParser] ✅ ML sidecar extracted ${text.length} chars from "${filename}" via "${parsed.method}"`);
+            }
+            resolve(text);
+          } catch { resolve(""); }
+        });
+      }
+    );
+    req.on("error",   () => resolve(""));
+    req.on("timeout", () => { req.destroy(); resolve(""); });
+    req.write(postData);
+    req.end();
+  });
 }
 
-async function parsePdfToText(buffer) {
-  try {
-    const pdfParse = require("pdf-parse");
-    const data = await pdfParse(buffer);
-    return data.text || "";
-  } catch (e) { return ""; }
+// ─────────────────────────────────────────────────────────────────────────────
+// MIME-type helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function isImageMime(mt) { return mt && mt.startsWith("image/"); }
+function isPdfMime(mt)   { return mt === "application/pdf"; }
+function isDocMime(mt) {
+  return mt && (
+    mt.includes("wordprocessingml") ||
+    mt.includes("presentationml") ||
+    mt.includes("spreadsheetml") ||
+    mt === "application/msword" ||
+    mt === "application/vnd.ms-excel" ||
+    mt === "application/vnd.ms-powerpoint" ||
+    mt === "text/rtf" ||
+    mt === "application/rtf"
+  );
 }
+
+const IMAGE_EXTS  = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"]);
+const BINARY_EXTS = new Set([".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".rtf", ...IMAGE_EXTS]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Extract readable text from any file buffer.
- * Supports: PDF, CSV, Excel (.xlsx/.xls), JSON, TXT, MD, and any plain text.
+ *
+ * Supported formats:
+ *  • PDF             — text layer (pdf-parse) + OCR fallback via Python sidecar
+ *  • Images          — OCR via Python sidecar (pytesseract)
+ *  • Word (.docx)    — python-docx via Python sidecar
+ *  • PowerPoint (.pptx) — python-pptx via Python sidecar
+ *  • Excel (.xlsx / .xls) — openpyxl via Python sidecar
+ *  • RTF             — striprtf via Python sidecar
+ *  • CSV             — lightweight Node parser
+ *  • JSON            — lightweight Node parser
+ *  • TXT / MD / any other plain text — decoded directly
+ *
+ * @param {Buffer} buffer
+ * @param {string} originalname
+ * @param {string} mimetype
+ * @returns {Promise<string>}
  */
 async function extractTextFromFile(buffer, originalname, mimetype) {
   const ext = path.extname(originalname || "").toLowerCase();
-  if (mimetype === "application/pdf" || ext === ".pdf") return await parsePdfToText(buffer);
-  if (mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      mimetype === "application/vnd.ms-excel" || ext === ".xlsx" || ext === ".xls")
-    return parseXlsxToText(buffer);
+
+  // ── Binary formats: route to Python sidecar ──
+  if (BINARY_EXTS.has(ext) || isImageMime(mimetype) || isPdfMime(mimetype) || isDocMime(mimetype)) {
+    // For PDFs, try the fast Node-side pdf-parse first before hitting the sidecar
+    if (ext === ".pdf" || isPdfMime(mimetype)) {
+      try {
+        const pdfParse = require("pdf-parse");
+        const data = await pdfParse(buffer);
+        if (data && data.text && data.text.trim().length > 30) {
+          console.log(`[FileParser] ✅ pdf-parse extracted ${data.text.length} chars from "${originalname}"`);
+          return data.text;
+        }
+      } catch (_) { /* fall through to sidecar */ }
+    }
+
+    // All other binary types (and scanned PDFs that failed pdf-parse) go to sidecar
+    const sidecarText = await extractViaMLSidecar(buffer, originalname, mimetype);
+    if (sidecarText) return sidecarText;
+
+    console.warn(`[FileParser] ⚠️  Could not extract text from "${originalname}" — file may be image-only or encrypted.`);
+    return "";
+  }
+
+  // ── Light-weight plain-text formats handled in Node ──
   const text = buffer.toString("utf-8");
-  if (mimetype === "text/csv" || ext === ".csv") return parseCsvToText(text);
+  if (mimetype === "text/csv"       || ext === ".csv")  return parseCsvToText(text);
   if (mimetype === "application/json" || ext === ".json") return parseJsonToText(text);
+  // TXT, MD, HTML, XML, etc.
   return text;
 }
 

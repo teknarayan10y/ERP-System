@@ -40,6 +40,11 @@ const CATEGORIES = [
 ];
 
 const ALL_QUICK_CHIPS = [
+  { cat: 'institution', label: '🏛️ Campus Velocity & 30-Day Forecast', query: 'What is our campus attendance velocity and 30-day projection?' },
+  { cat: 'institution', label: '🏥 Department Health Scores (0-100)', query: 'Show department health scores and which department is lowest' },
+  { cat: 'attendance', label: '⚠️ Statistical Attendance Anomalies', query: 'Are there any statistical attendance anomalies or shortage clusters?' },
+  { cat: 'attendance', label: '🧪 What-If Condonation Simulation (70%)', query: 'Run a What-If simulation: What is the impact if condonation cutoff is lowered to 70%?' },
+  { cat: 'institution', label: '💡 How to Improve Campus Retention', query: 'How can we improve college attendance and reduce student dropout risks?' },
   { cat: 'institution', label: '🏛️ College Institution Summary', query: 'Show the college overview statistics and student count' },
   { cat: 'faculty', label: '🆔 All Faculty IDs', query: 'List all faculty IDs and departments' },
   { cat: 'students', label: '🆔 All Student IDs & Roll Numbers', query: 'List all student IDs and roll numbers' },
