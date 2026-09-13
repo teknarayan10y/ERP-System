@@ -836,6 +836,11 @@ ${attachedFileText}
 
 6. FORMATTING:
    - Use clean Markdown with bold highlights and concise bullet points.
+
+7. FORECAST, VELOCITY & DIGITAL TWIN:
+   - When asked about "forecast", "future attendance", "30-day projection", "velocity", "trajectory", or "digital twin":
+   - Refer directly to the personalDigitalTwin object provided in the student portal context.
+   - Mention the Velocity Trajectory (e.g. UPWARD, STABLE, or DOWNWARD), Projected 30-Day Attendance percentage, and Risk Level concisely.
 `;
 
       let generated = false;
