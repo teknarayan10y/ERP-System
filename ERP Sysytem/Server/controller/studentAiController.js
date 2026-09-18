@@ -1012,6 +1012,22 @@ ${attachedFileText}
      * Question number (e.g. Q1, Q2... up to Q${requestedCount}) and question text
      * Options: A), B), C), D)
      * Correct Answer Key with a clear, concise concept explanation to help them study and master the topic.
+
+10. OMNISCIENT WHAT-IF & HYPOTHETICAL SIMULATIONS (ALL ACADEMIC DOMAINS):
+    - ATTENDANCE WHAT-IF:
+      * If missing/bunking N classes: New Total = Total + N, Present stays same -> Projected % = (Present / New Total) * 100.
+      * If attending N consecutive classes: New Total = Total + N, New Present = Present + N -> Projected % = (New Present / New Total) * 100.
+      * State exact 2-decimal percentage and whether Safe (>=75%) or Shortage (<75%).
+    - MARKS & EXAMS WHAT-IF:
+      * If asked "What if I score X in semester exam?" or "What if I get Y in internal/assignments?":
+      * Evaluation Scheme: Semester Exam (out of 60) + Internal/Assignment (out of 20) + Practical (out of 20) = Total (out of 100).
+      * Compute the new Total /100 and determine the projected Letter Grade (O: >=90, A+: 80-89, A: 70-79, B+: 60-69, B: 50-59, RA/Fail: <50).
+    - CGPA & GPA WHAT-IF:
+      * If asked "What if I get all A's?" or "What if my SGPA is X, what will my CGPA be?":
+      * Project the updated CGPA based on course credits and current CGPA.
+    - ASSIGNMENTS & DEADLINES WHAT-IF:
+      * If asked "What if I don't submit Assignment N?" or "What if I submit after the deadline?":
+      * Explain the impact on internal assignment marks (out of 20) and risk of falling below the 50% passing threshold.
 `;
 
       let generated = false;
@@ -1031,7 +1047,7 @@ ${attachedFileText}
       }
 
       if (!generated) {
-        const offlineRes = await pythonMlClient.queryOfflineLlm(message, studentContext, attachedFileText, attachedFileName);
+        const offlineRes = await pythonMlClient.queryOfflineLlm(message, studentContext, attachedFileText, attachedFileName, knowledgeContextText, requestedCount);
         if (offlineRes && offlineRes.reply) {
           aiReply = offlineRes.reply;
           modelUsed = offlineRes.model;
@@ -1040,7 +1056,7 @@ ${attachedFileText}
         }
       }
     } else {
-      const offlineRes = await pythonMlClient.queryOfflineLlm(message, studentContext, attachedFileText, attachedFileName);
+      const offlineRes = await pythonMlClient.queryOfflineLlm(message, studentContext, attachedFileText, attachedFileName, knowledgeContextText, requestedCount);
       if (offlineRes && offlineRes.reply) {
         aiReply = offlineRes.reply;
         modelUsed = offlineRes.model;

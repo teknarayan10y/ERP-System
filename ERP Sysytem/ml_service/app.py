@@ -314,20 +314,25 @@ class NexusMindMLHandler(BaseHTTPRequestHandler):
 
         # 1. Try local offline LLM (Ollama) if available
         ollama_url = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434/api/generate')
-        ollama_model = os.environ.get('OLLAMA_MODEL', 'phi3')
+        ollama_model = os.environ.get('OLLAMA_MODEL', 'qwen2.5:7b')
         try:
             prompt = (
                 f"You are an academic exam co-pilot. Generate exactly {count} high-yield multiple-choice questions "
-                f"based on this syllabus content:\n\n{syllabus_text[:3000]}\n\n"
+                f"covering distinct units and topics from this syllabus content:\n\n{syllabus_text[:25000]}\n\n"
                 f"Format each question clearly with:\n"
                 f"**Q[number]: [Question Text]**\n"
                 f"A) [Option A]\nB) [Option B]\nC) [Option C]\nD) [Option D]\n"
                 f"👉 **Correct Answer:** [Option Letter]\n"
                 f"*Explanation:* [1 sentence concept explanation]\n"
             )
-            data = json.dumps({"model": ollama_model, "prompt": prompt, "stream": False}).encode('utf-8')
+            data = json.dumps({
+                "model": ollama_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"num_ctx": 16384, "temperature": 0.2, "top_p": 0.9}
+            }).encode('utf-8')
             req = urllib.request.Request(ollama_url, data=data, headers={'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=25) as resp:
+            with urllib.request.urlopen(req, timeout=60) as resp:
                 if resp.status == 200:
                     resp_data = json.loads(resp.read().decode('utf-8'))
                     text = resp_data.get('response', '').strip()

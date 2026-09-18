@@ -41,9 +41,11 @@ function generateLocalEmbedding(text) {
 }
 
 /**
- * Generate embedding using Google Gemini text-embedding-004 with automatic local fallback
+ * Generate embedding using Google Gemini text-embedding-004, with automatic local Ollama neural embedding
+ * (e.g. nomic-embed-text / all-minilm) and normalized deterministic word-hash fallback.
  */
 async function generateEmbedding(text) {
+  // 1. Try Google Gemini text-embedding-004 if online and key present
   const apiKey = process.env.GEMINI_API_KEY;
   if (apiKey) {
     try {
@@ -54,9 +56,34 @@ async function generateEmbedding(text) {
         return result.embedding.values;
       }
     } catch {
-      // Smooth fallback to local normalized embedding without noisy logs
+      // Fall through to local embedding
     }
   }
+
+  // 2. Try Local Offline Ollama Neural Embedding
+  try {
+    const ollamaUrl = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api/generate').replace(/\/api\/generate\/?$/, '/api/embeddings');
+    const embedModel = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
+    const res = await fetch(ollamaUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: embedModel,
+        prompt: text
+      }),
+      signal: AbortSignal.timeout(2000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.embedding) && data.embedding.length > 0) {
+        return data.embedding;
+      }
+    }
+  } catch (_) {
+    // Fall through to local mathematical embedding
+  }
+
+  // 3. Mathematical deterministic 128-dimensional normalized embedding fallback
   return generateLocalEmbedding(text);
 }
 

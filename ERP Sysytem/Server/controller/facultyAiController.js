@@ -1223,6 +1223,11 @@ ${knowledgeContextText}
    - Refer directly to the nexusMindIntelligence object provided in the database context.
    - State the Class Velocity (UPWARD/STABLE/SLIPPING), Predicted Pass Rate %, and names of at-risk students.
    - Always conclude with concrete, numbered actionable recommendations for the faculty member on how to intervene and improve class outcomes.
+
+8. OMNISCIENT WHAT-IF & CLASSROOM SIMULATIONS (ALL DOMAINS):
+   - REMEDIAL SESSIONS & ATTENDANCE: If asked "What if I conduct N remedial classes?", calculate how many at-risk students (<75%) get recovered back above 75%.
+   - MARKS & CLASS PASS RATES: If asked "What if the class average in internal exam increases by N marks?" or "What if failing students score 40/60 in semester exam?": calculate the projected class pass rate % and shift in grade distribution.
+   - ASSIGNMENT DEADLINES & SUBMISSIONS: If asked "What if I extend the deadline by N days?" or "What if late submissions are accepted?": analyze expected submission recovery from the pending assignments roster.
 `;
 
       let generated = false;
@@ -1242,7 +1247,7 @@ ${knowledgeContextText}
       }
 
       if (!generated) {
-        const offlineRes = await pythonMlClient.queryFacultyOfflineLlm(message, facultyContext, attachedFileText, attachedFileName);
+        const offlineRes = await pythonMlClient.queryFacultyOfflineLlm(message, facultyContext, attachedFileText, attachedFileName, knowledgeContextText);
         if (offlineRes && offlineRes.reply) {
           aiReply = offlineRes.reply;
           modelUsed = offlineRes.model;
@@ -1251,7 +1256,7 @@ ${knowledgeContextText}
         }
       }
     } else {
-      const offlineRes = await pythonMlClient.queryFacultyOfflineLlm(message, facultyContext, attachedFileText, attachedFileName);
+      const offlineRes = await pythonMlClient.queryFacultyOfflineLlm(message, facultyContext, attachedFileText, attachedFileName, knowledgeContextText);
       if (offlineRes && offlineRes.reply) {
         aiReply = offlineRes.reply;
         modelUsed = offlineRes.model;

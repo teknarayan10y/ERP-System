@@ -1128,6 +1128,11 @@ ${attachedFileText}
    - Refer directly to the nexusMindIntelligence object provided in the database context.
    - Present the Department Health ratings (0-100), Campus Velocity, and Anomaly status.
    - Always conclude with concrete, numbered actionable policy recommendations for the administrative leadership on how to intervene and improve student retention and performance.
+
+10. OMNISCIENT WHAT-IF POLICY & INSTITUTIONAL SIMULATIONS (ALL DOMAINS):
+    - POLICY & ATTENDANCE THRESHOLDS: If asked "What if we relax attendance to 70% or 65%?" or "What if 3 unplanned holidays occur?": calculate the exact number of students retained/saved from examination debarment across departments.
+    - FACULTY ALLOCATION & WORKLOAD: If asked "What if we assign N more faculty to Department X?" or "What if student intake increases by N?": evaluate teacher-student ratios, course coverage, and department health ratings.
+    - ACADEMIC PERFORMANCE & RETENTION: If asked "What if remedial tutoring is mandated for at-risk students?" or "What if fee payment deadlines are extended?": project institutional pass rate shifts and cohort retention metrics.
 `;
 
       let generated = false;
@@ -1147,7 +1152,7 @@ ${attachedFileText}
       }
 
       if (!generated) {
-        const offlineRes = await pythonMlClient.queryAdminOfflineLlm(message, adminContext, attachedFileText, attachedFileName);
+        const offlineRes = await pythonMlClient.queryAdminOfflineLlm(message, adminContext, attachedFileText, attachedFileName, knowledgeContextText);
         if (offlineRes && offlineRes.reply) {
           aiReply = offlineRes.reply;
           modelUsed = offlineRes.model;
@@ -1156,7 +1161,7 @@ ${attachedFileText}
         }
       }
     } else {
-      const offlineRes = await pythonMlClient.queryAdminOfflineLlm(message, adminContext, attachedFileText, attachedFileName);
+      const offlineRes = await pythonMlClient.queryAdminOfflineLlm(message, adminContext, attachedFileText, attachedFileName, knowledgeContextText);
       if (offlineRes && offlineRes.reply) {
         aiReply = offlineRes.reply;
         modelUsed = offlineRes.model;

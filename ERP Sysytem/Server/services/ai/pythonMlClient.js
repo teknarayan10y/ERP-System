@@ -424,118 +424,208 @@ function buildFullStudentPortalContext(context) {
   return lines.join('\n');
 }
 
+let cachedBestModel = null;
+let lastModelCheckTime = 0;
+
+/**
+ * Automatically discovers the best available local LLM from Ollama.
+ * Prioritizes high-parameter and modern reasoning models first, with phi3 fallback.
+ */
+async function getBestOllamaModel() {
+  if (process.env.OLLAMA_MODEL) {
+    return process.env.OLLAMA_MODEL;
+  }
+  const now = Date.now();
+  if (cachedBestModel && (now - lastModelCheckTime < 60000)) {
+    return cachedBestModel;
+  }
+
+  const ollamaTagsUrl = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api/generate').replace(/\/api\/generate\/?$/, '/api/tags');
+  try {
+    const res = await fetch(ollamaTagsUrl, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      const data = await res.json();
+      const availableModels = (data.models || []).map(m => m.name || m.model || '');
+      
+      const priorityCandidates = [
+        'qwen2.5:14b', 'qwen2.5:7b', 'qwen2.5:latest', 'qwen2.5:3b',
+        'llama3.3:latest', 'llama3.3:70b',
+        'llama3.1:8b', 'llama3.1:latest',
+        'llama3.2:3b', 'llama3.2:latest', 'llama3.2:1b',
+        'mistral:7b', 'mistral:latest',
+        'gemma2:9b', 'gemma2:2b',
+        'phi3:latest', 'phi3'
+      ];
+
+      for (const pref of priorityCandidates) {
+        const matched = availableModels.find(m => m === pref || m.startsWith(pref.split(':')[0] + ':') || m === pref.split(':')[0]);
+        if (matched) {
+          cachedBestModel = matched;
+          lastModelCheckTime = now;
+          return cachedBestModel;
+        }
+      }
+
+      if (availableModels.length > 0) {
+        cachedBestModel = availableModels[0];
+        lastModelCheckTime = now;
+        return cachedBestModel;
+      }
+    }
+  } catch (_) {}
+
+  return 'phi3:latest';
+}
+
 /**
  * Query Local Offline LLM (e.g. Ollama http://127.0.0.1:11434) Grounded in Real-Time ERP Records
+ * Upgraded to 16K context window, 28,000 char document capacity, Vector RAG injection, and full prompt guardrails.
  * @param {string} prompt - The student's question
  * @param {object} context - Real-time ERP data (attendance, marks, etc.)
  * @param {string} attachedFileText - Full text content of any uploaded file (syllabus, notes, etc.)
  * @param {string} attachedFileName - Original filename of the uploaded file
+ * @param {string} knowledgeContextText - RAG retrieved institutional policies & custom regulations
+ * @param {number} requestedCount - Exact count of questions if quiz requested
  */
-async function queryOfflineLlm(prompt, context = {}, attachedFileText = '', attachedFileName = '') {
+async function queryOfflineLlm(prompt, context = {}, attachedFileText = '', attachedFileName = '', knowledgeContextText = '', requestedCount = 5) {
   const ollamaUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api/generate';
-  const ollamaModel = process.env.OLLAMA_MODEL || 'phi3';
+  const ollamaModel = await getBestOllamaModel();
 
-  const isQuizRequest = /quize?s?|mcqs?|questions?|practice|test me|test my|problems?|exam/i.test(prompt);
+  const isQuizRequest = /quize?s?|mcqs?|questions?|practice|test me|test my|problems?|exam|mcq/i.test(prompt);
   const portalContext = buildFullStudentPortalContext(context);
 
   let systemPrompt;
   let mode;
 
-  console.log(`[Ollama] File text: ${attachedFileText.length} chars | isQuiz: ${isQuizRequest} | prompt: "${prompt.substring(0, 50)}"`);
+  console.log(`[Ollama] Model: ${ollamaModel} | File text: ${attachedFileText.length} chars | isQuiz: ${isQuizRequest} | prompt: "${prompt.substring(0, 50)}"`);
 
-  // Parse requested question count (e.g., "5 quize", "10 questions")
+  // Parse requested question count
   const countMatch = prompt.match(/(\d+)\s*(?:questions?|mcqs?|quize?s?)/i) || prompt.match(/(?:give|generate|create|ask|test)\s*(?:me|my)?\s*(\d+)/i);
-  const count = countMatch ? Math.min(20, Math.max(1, parseInt(countMatch[1], 10))) : 5;
+  const count = countMatch ? Math.min(25, Math.max(1, parseInt(countMatch[1], 10))) : Math.min(25, Math.max(1, Number(requestedCount) || 5));
 
-  if (attachedFileText && attachedFileText.trim().length > 20 && isQuizRequest) {
+  // Allow up to 28,000 characters of attached file content (fitting 16K context window)
+  const slicedFileText = attachedFileText ? attachedFileText.substring(0, 28000) : '';
+
+  if (slicedFileText && slicedFileText.trim().length > 20 && isQuizRequest) {
     mode = 'QUIZ_FROM_DOCUMENT';
-    // === MODE 1: Quiz from uploaded syllabus document ===
     systemPrompt =
-      `You are an expert professor and academic quiz creator.
+      `You are Student AI, an expert academic professor and quiz creator for a college student.
 The student uploaded their course syllabus document ("${attachedFileName || 'Syllabus'}") and asked: "${prompt}".
-Generate exactly ${count} high-quality multiple-choice questions (MCQs) covering the different units and topics found in the syllabus document below.
-Make sure the questions cover distinct units (e.g. Unit 1, Unit 2, Unit 3, etc.) as requested.
 
-SYLLABUS DOCUMENT CONTENT:
---- START ---
-${attachedFileText.substring(0, 6000)}
---- END ---
+==================================================
+[ATTACHED SYLLABUS / DOCUMENT CONTENT]
+${slicedFileText}
+==================================================
+
+Generate EXACTLY ${count} high-quality, distinct multiple-choice questions (MCQs) covering the units and topics from the document above.
+Make sure the questions cover distinct units and core concepts as found in the text.
 
 FORMAT each question clearly as:
-Q1: [Question text - mention Unit if applicable]
+**Q[N]: [Question text - specify Unit/Topic]**
 A) [Option A]
 B) [Option B]
 C) [Option C]
 D) [Option D]
-Answer: [Correct Letter]
-Explanation: [Concise concept explanation]
+👉 **Correct Answer:** [Option Letter]
+*Explanation:* [Concise concept explanation]
 
 Generate the ${count} questions now (plain text, NO JSON):`;
 
   } else if (isQuizRequest) {
     mode = 'QUIZ_FROM_COURSES';
-    // === MODE 2: Quiz request — no document attached or document text is empty ===
-    // Use the student's actual enrolled course names from their ERP profile.
     const courseNames = (context.courses || []).map(c => c.name).filter(Boolean);
     const courseList = courseNames.length > 0
       ? courseNames.join(', ')
       : 'the student\'s enrolled courses';
+
     systemPrompt =
-      `You are an expert academic tutor and quiz creator for a college student.
+      `You are Student AI, an expert academic tutor and quiz creator.
 The student asked: "${prompt}".
+They have not attached a syllabus document, so generate questions based on their enrolled courses: ${courseList}
 
-They have NOT uploaded a syllabus document, so generate questions based on their enrolled courses:
-${courseList}
+Generate EXACTLY ${count} multiple-choice practice questions (MCQs) covering foundational topics of the courses.
+CRITICAL: Do NOT say "no quizzes recorded". You MUST generate the questions now.
 
-Generate exactly ${count} multiple-choice practice questions (MCQs) covering core topics of the above courses.
-CRITICAL: Do NOT say "no quizzes recorded". You MUST CREATE and GENERATE the quiz questions now.
-
-Student's ERP Portal Context:
+Student's Portal Context:
 ${portalContext}
 
 FORMAT each question clearly as:
-Q[N]: [Question text — specify the subject/unit]
+**Q[N]: [Question text — specify subject/topic]**
 A) [Option A]
 B) [Option B]
 C) [Option C]
 D) [Option D]
-Answer: [Correct Letter]
-Explanation: [Concise concept explanation]
+👉 **Correct Answer:** [Option Letter]
+*Explanation:* [Concise concept explanation]
 
 Generate the ${count} questions now (plain text, NO JSON):`;
 
-
-  } else if (attachedFileText && attachedFileText.trim().length > 20) {
+  } else if (slicedFileText && slicedFileText.trim().length > 20) {
     mode = 'DOCUMENT_PLUS_PORTAL';
-    // === MODE 3: Question with attached document AND access to student portal records ===
     systemPrompt =
-      `You are Student AI, an academic assistant for a college ERP system.
-Answer the student's question using their live Student Portal Records and the uploaded document below.
-Be direct, helpful, and concise. Do NOT output JSON.
+      `You are Student AI, the intelligent Academic Assistant for the logged-in student.
+Answer the student's question accurately using their Student Portal Records, Institutional Regulations, and the uploaded document below.
 
+[CRITICAL INSTRUCTIONS]:
+1. NATURAL TONE: Never use phrases like "The database contains..." or "According to the database...". Speak directly to the student.
+2. CONCISE BY DEFAULT: Unless the user explicitly asks for "in detail", output a direct, crisp 1-2 sentence answer.
+3. 2-DECIMAL ACCURACY: Format all percentages with 2 decimals (e.g. 84.50%).
+4. Do NOT output raw JSON.
+
+==================================================
+[1. STUDENT PORTAL RECORDS]
 ${portalContext}
+==================================================
 
-ATTACHED DOCUMENT: "${attachedFileName || 'Uploaded File'}"
---- START ---
-${attachedFileText.substring(0, 4000)}
---- END ---
+${knowledgeContextText ? `==================================================\n[2. INSTITUTIONAL POLICIES & REGULATIONS]\n${knowledgeContextText}\n==================================================\n` : ''}
+==================================================
+[3. ATTACHED FILE: "${attachedFileName || 'Uploaded Document'}"]
+${slicedFileText}
+==================================================
 
-Student question: ${prompt}
+Student Question: "${prompt}"
 
-Answer (plain text):`;
+Answer:`;
 
   } else {
     mode = 'PORTAL_RECORDS';
-    // === MODE 4: Comprehensive student portal inquiry ===
     systemPrompt =
-      `You are Student AI, the personal academic assistant for the student logged into this college ERP system.
-Answer the student's question accurately using their live portal records below.
-If asked about attendance, marks, courses, faculty, assignments, roll number, CGPA, or recommendations, extract the exact values from their records.
-Be friendly, professional, and concise. Do NOT output JSON.
+      `You are Student AI, the intelligent Academic Assistant for the logged-in student.
+Answer the student's question accurately using their personal portal records and institutional regulations below.
 
+[CRITICAL INSTRUCTIONS]:
+1. NATURAL TONE: Never use phrases like "The database contains..." or "In the database...". Speak directly to the student.
+2. CONCISE BY DEFAULT: Unless the user explicitly asks for "in detail" or "breakdown", output ONLY the direct 1-2 sentence answer.
+3. STRICT CATEGORY SCOPING:
+   - If asked for attendance, give only attendance.
+   - If asked for marks, give only marks.
+   - If asked for roll number, CGPA, or email, give only that info.
+4. 2-DECIMAL ACCURACY: Format all percentages with 2 decimals (e.g. 66.67%, 82.35%).
+5. FORECAST & DIGITAL TWIN: If asked about future attendance, velocity, or 30-day projection, use the Academic Velocity & Digital Twin section.
+6. IMPROVEMENT ADVICE: If asked "how to improve" or "how to reach 75%", provide concrete, actionable steps.
+7. OMNISCIENT WHAT-IF & HYPOTHETICAL SIMULATIONS (ALL ACADEMIC DOMAINS):
+   - ATTENDANCE WHAT-IF:
+     * If missing/bunking N classes: New Total = Total + N, Present stays same -> Projected % = (Present / New Total) * 100.
+     * If attending N consecutive classes: New Total = Total + N, New Present = Present + N -> Projected % = (New Present / New Total) * 100.
+     * State exact 2-decimal percentage and whether Safe (>=75%) or Shortage (<75%).
+   - MARKS & EXAMS WHAT-IF:
+     * If asked "What if I score X in semester exam?" or "What if I get Y in internal/assignments?":
+     * Evaluation Scheme: Semester Exam (out of 60) + Internal/Assignment (out of 20) + Practical (out of 20) = Total (out of 100).
+     * Compute the new Total /100 and determine the projected Letter Grade (O: >=90, A+: 80-89, A: 70-79, B+: 60-69, B: 50-59, RA/Fail: <50).
+   - CGPA & GPA WHAT-IF:
+     * If asked "What if I get all A's?" or "What if my SGPA is X, what will my CGPA be?":
+     * Project the updated CGPA based on course credits and current CGPA.
+   - ASSIGNMENTS & DEADLINES WHAT-IF:
+     * If asked "What if I don't submit Assignment N?" or "What if I submit after the deadline?":
+     * Explain the impact on internal assignment marks (out of 20) and risk of falling below the 50% passing threshold.
+8. Do NOT output raw JSON.
+
+==================================================
+[STUDENT PORTAL RECORDS]
 ${portalContext}
-
-Student question: ${prompt}
+==================================================
+${knowledgeContextText ? `\n==================================================\n[INSTITUTIONAL POLICIES & REGULATIONS]\n${knowledgeContextText}\n==================================================\n` : ''}
+Student Question: "${prompt}"
 
 Answer:`;
   }
@@ -550,24 +640,29 @@ Answer:`;
         model: ollamaModel,
         prompt: systemPrompt,
         stream: false,
-        options: { temperature: 0.3, num_predict: 800 }
+        options: {
+          temperature: 0.2,
+          top_p: 0.9,
+          num_ctx: 16384,
+          num_predict: 1500
+        }
       }),
-      signal: AbortSignal.timeout(90000)  // 90s for CPU-based phi3
+      signal: AbortSignal.timeout(90000)
     });
 
     if (res.ok) {
       const data = await res.json();
       let text = data.response?.trim();
       if (text && text.length > 2) {
-        text = cleanOllamaResponse(text);  // Fix any JSON output
+        text = cleanOllamaResponse(text);
         return {
           reply: text,
-          model: `Local Offline LLM (${ollamaModel})`
+          model: `Local Offline LLM (${ollamaModel}) + High-Context Engine`
         };
       }
     }
   } catch (err) {
-    // Offline LLM not running or timed out
+    console.warn('[Ollama] Query failed or timed out:', err.message);
   }
   return null;
 }
@@ -644,42 +739,71 @@ function buildFullAdminPortalContext(context) {
 
 /**
  * Query Local Offline LLM for Super Admin AI grounded in institution records
+ * Upgraded to 16K context window, 28,000 char document capacity, Vector RAG injection, and full prompt guardrails.
  */
-async function queryAdminOfflineLlm(prompt, context = {}, attachedFileText = '', attachedFileName = '') {
+async function queryAdminOfflineLlm(prompt, context = {}, attachedFileText = '', attachedFileName = '', knowledgeContextText = '') {
   const ollamaUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api/generate';
-  const ollamaModel = process.env.OLLAMA_MODEL || 'phi3';
+  const ollamaModel = await getBestOllamaModel();
   const adminContext = buildFullAdminPortalContext(context);
+  const slicedFileText = attachedFileText ? attachedFileText.substring(0, 28000) : '';
 
   let systemPrompt;
-  if (attachedFileText) {
+  if (slicedFileText) {
     systemPrompt =
-      `You are Super Admin AI, the administrative intelligence assistant for a college ERP system.
-Answer the administrator's question using the live Institutional ERP Records and the attached document below.
-Be concise, factual, and professional. Do NOT output JSON.
+      `You are Super Admin AI, the administrative intelligence executive assistant for a college ERP system.
+Answer the administrator's question using the live Institutional ERP Records, college policies, and the attached document below.
 
+[CRITICAL INSTRUCTIONS]:
+1. NATURAL TONE: Never use phrases like "The database contains..." or "According to the database...".
+2. DIRECT ANSWERS: If asked for student or faculty details, provide direct contact numbers, email, department, attendance, and CGPA cleanly.
+3. DUAL & MULTI-ENTITY: If asked about both a student and faculty member, clearly provide separate structured sections for each.
+4. CONCISE BY DEFAULT: Provide crisp, direct answers unless explicitly asked for "in detail" or "breakdown".
+5. 2-DECIMAL ACCURACY: Format all attendance percentages with 2 decimals (e.g. 66.67%).
+6. Do NOT output raw JSON.
+
+==================================================
+[1. LIVE INSTITUTIONAL RECORDS]
 ${adminContext}
+==================================================
 
-ATTACHED DOCUMENT: "${attachedFileName || 'Uploaded File'}"
---- START ---
-${attachedFileText.substring(0, 4000)}
---- END ---
+${knowledgeContextText ? `==================================================\n[2. INSTITUTIONAL POLICIES & REGULATIONS]\n${knowledgeContextText}\n==================================================\n` : ''}
+==================================================
+[3. ATTACHED DOCUMENT: "${attachedFileName || 'Uploaded File'}"]
+${slicedFileText}
+==================================================
 
-Admin question: ${prompt}
+Admin Question: "${prompt}"
 
-Answer (plain text):`;
+Answer:`;
   } else {
     systemPrompt =
       `You are Super Admin AI, the administrative executive assistant for a college ERP system.
-Answer the administrator's question accurately using their live campus database records below.
-If asked about students, faculty, departments, overall attendance, shortages, or policy advice, extract the exact data from the records.
-Be direct, professional, and concise. Do NOT output JSON.
+Answer the administrator's question accurately using their live campus database records and institutional regulations below.
 
+[CRITICAL INSTRUCTIONS]:
+1. NATURAL TONE: Never use phrases like "The database contains..." or "In the database...". Speak directly to the administrator.
+2. DIRECT ANSWERS: If asked for student or faculty details, provide direct contact numbers, email, department, attendance %, and CGPA cleanly.
+3. DUAL & MULTI-ENTITY: If asked about both student and faculty, provide structured sections for both.
+4. CONCISE BY DEFAULT: Unless the user asks for "in detail" or "breakdown", output ONLY the direct, crisp answer.
+5. 2-DECIMAL ACCURACY: Format all percentages with 2 decimals (e.g. 66.67%, 82.35%).
+6. INSTITUTIONAL DIGITAL TWIN & ANOMALIES: If asked about campus attendance velocity, health ratings, or anomalies, refer directly to institutional velocity metrics.
+7. OMNISCIENT WHAT-IF POLICY & INSTITUTIONAL SIMULATIONS (ALL DOMAINS):
+   - POLICY & ATTENDANCE THRESHOLDS: If asked "What if we relax attendance to 70% or 65%?" or "What if 3 unplanned holidays occur?": calculate the exact number of students retained/saved from examination debarment across departments.
+   - FACULTY ALLOCATION & WORKLOAD: If asked "What if we assign N more faculty to Department X?" or "What if student intake increases by N?": evaluate teacher-student ratios, course coverage, and department health ratings.
+   - ACADEMIC PERFORMANCE & RETENTION: If asked "What if remedial tutoring is mandated for at-risk students?" or "What if fee payment deadlines are extended?": project institutional pass rate shifts and cohort retention metrics.
+8. Do NOT output raw JSON.
+
+==================================================
+[LIVE INSTITUTIONAL RECORDS]
 ${adminContext}
-
-Admin question: ${prompt}
+==================================================
+${knowledgeContextText ? `\n==================================================\n[INSTITUTIONAL POLICIES & REGULATIONS]\n${knowledgeContextText}\n==================================================\n` : ''}
+Admin Question: "${prompt}"
 
 Answer:`;
   }
+
+  console.log(`[Ollama Admin] Model: ${ollamaModel} | Prompt: "${prompt.substring(0, 50)}"`);
 
   try {
     const res = await fetch(ollamaUrl, {
@@ -689,7 +813,12 @@ Answer:`;
         model: ollamaModel,
         prompt: systemPrompt,
         stream: false,
-        options: { temperature: 0.3, num_predict: 800 }
+        options: {
+          temperature: 0.2,
+          top_p: 0.9,
+          num_ctx: 16384,
+          num_predict: 1500
+        }
       }),
       signal: AbortSignal.timeout(90000)
     });
@@ -701,12 +830,12 @@ Answer:`;
         text = cleanOllamaResponse(text);
         return {
           reply: text,
-          model: `Local Offline LLM (${ollamaModel})`
+          model: `Local Offline LLM (${ollamaModel}) + High-Context Engine`
         };
       }
     }
   } catch (err) {
-    // Offline LLM timed out or not running
+    console.warn('[Ollama Admin] Query failed or timed out:', err.message);
   }
   return null;
 }
@@ -787,42 +916,70 @@ function buildFullFacultyPortalContext(context) {
 
 /**
  * Query Local Offline LLM for Faculty AI grounded in class and course records
+ * Upgraded to 16K context window, 28,000 char document capacity, Vector RAG injection, and full prompt guardrails.
  */
-async function queryFacultyOfflineLlm(prompt, context = {}, attachedFileText = '', attachedFileName = '') {
+async function queryFacultyOfflineLlm(prompt, context = {}, attachedFileText = '', attachedFileName = '', knowledgeContextText = '') {
   const ollamaUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api/generate';
-  const ollamaModel = process.env.OLLAMA_MODEL || 'phi3';
+  const ollamaModel = await getBestOllamaModel();
   const facultyContext = buildFullFacultyPortalContext(context);
+  const slicedFileText = attachedFileText ? attachedFileText.substring(0, 28000) : '';
 
   let systemPrompt;
-  if (attachedFileText) {
+  if (slicedFileText) {
     systemPrompt =
-      `You are Faculty AI, the academic teaching assistant for a faculty member in a college ERP system.
-Answer the instructor's question using their class ERP records and the attached file below.
-Be concise, direct, and helpful. Do NOT output JSON.
+      `You are Faculty AI, the dedicated teaching and course management co-pilot for the logged-in faculty member.
+Answer the instructor's question using their class ERP records, academic policies, and the attached file below.
 
+[CRITICAL INSTRUCTIONS]:
+1. NATURAL TONE: Never use phrases like "The database contains..." or "According to the database...". Speak directly as an intelligent faculty assistant.
+2. CONCISE BY DEFAULT: Output a direct, crisp 1-2 sentence answer unless explicitly asked for "in detail" or "breakdown".
+3. 2-DECIMAL ACCURACY: Format all percentages with 2 decimals (e.g. 66.67%).
+4. Do NOT output raw JSON.
+
+==================================================
+[1. CLASS & FACULTY RECORDS]
 ${facultyContext}
+==================================================
 
-ATTACHED DOCUMENT: "${attachedFileName || 'Uploaded File'}"
---- START ---
-${attachedFileText.substring(0, 4000)}
---- END ---
+${knowledgeContextText ? `==================================================\n[2. ACADEMIC POLICIES & REGULATIONS]\n${knowledgeContextText}\n==================================================\n` : ''}
+==================================================
+[3. ATTACHED DOCUMENT: "${attachedFileName || 'Uploaded File'}"]
+${slicedFileText}
+==================================================
 
-Faculty question: ${prompt}
+Faculty Question: "${prompt}"
 
-Answer (plain text):`;
+Answer:`;
   } else {
     systemPrompt =
-      `You are Faculty AI, the teaching and course assistant for the instructor logged into this ERP system.
-Answer the instructor's question accurately using their live class records below.
-If asked about courses taught, student attendance, assignment submissions, marks, or at-risk students, extract the exact data from the records.
-Be professional, concise, and helpful. Do NOT output JSON.
+      `You are Faculty AI, the dedicated teaching and course management co-pilot for the logged-in faculty member.
+Answer the instructor's question accurately using their live class records and academic regulations below.
 
+[CRITICAL INSTRUCTIONS]:
+1. NATURAL TONE: Never use phrases like "The database contains..." or "In the database...". Speak directly to the instructor.
+2. CONCISE BY DEFAULT: Unless the user asks for "in detail" or "breakdown", output ONLY the direct 1-2 sentence answer.
+3. STRICT CATEGORY SCOPING:
+   - If asked for student attendance, give only that student's attendance.
+   - If asked for assignment status, give only assignment status.
+4. 2-DECIMAL ACCURACY: Format all percentages with 2 decimals (e.g. 66.67%, 82.35%).
+5. CLASS VELOCITY & AT-RISK STUDENTS: If asked about pass rates, class predictions, or at-risk students, refer to Class Intelligence & Digital Twin. Conclude with actionable teaching interventions.
+6. OMNISCIENT WHAT-IF & CLASSROOM SIMULATIONS (ALL DOMAINS):
+   - REMEDIAL SESSIONS & ATTENDANCE: If asked "What if I conduct N remedial classes?", calculate how many at-risk students (<75%) get recovered back above 75%.
+   - MARKS & CLASS PASS RATES: If asked "What if the class average in internal exam increases by N marks?" or "What if failing students score 40/60 in semester exam?": calculate the projected class pass rate % and shift in grade distribution.
+   - ASSIGNMENT DEADLINES & SUBMISSIONS: If asked "What if I extend the deadline by N days?" or "What if late submissions are accepted?": analyze expected submission recovery from the pending assignments roster.
+7. Do NOT output raw JSON.
+
+==================================================
+[CLASS & FACULTY RECORDS]
 ${facultyContext}
-
-Faculty question: ${prompt}
+==================================================
+${knowledgeContextText ? `\n==================================================\n[ACADEMIC POLICIES & REGULATIONS]\n${knowledgeContextText}\n==================================================\n` : ''}
+Faculty Question: "${prompt}"
 
 Answer:`;
   }
+
+  console.log(`[Ollama Faculty] Model: ${ollamaModel} | Prompt: "${prompt.substring(0, 50)}"`);
 
   try {
     const res = await fetch(ollamaUrl, {
@@ -832,7 +989,12 @@ Answer:`;
         model: ollamaModel,
         prompt: systemPrompt,
         stream: false,
-        options: { temperature: 0.3, num_predict: 800 }
+        options: {
+          temperature: 0.2,
+          top_p: 0.9,
+          num_ctx: 16384,
+          num_predict: 1500
+        }
       }),
       signal: AbortSignal.timeout(90000)
     });
@@ -844,12 +1006,12 @@ Answer:`;
         text = cleanOllamaResponse(text);
         return {
           reply: text,
-          model: `Local Offline LLM (${ollamaModel})`
+          model: `Local Offline LLM (${ollamaModel}) + High-Context Engine`
         };
       }
     }
   } catch (err) {
-    // Offline LLM timed out or not running
+    console.warn('[Ollama Faculty] Query failed or timed out:', err.message);
   }
   return null;
 }
